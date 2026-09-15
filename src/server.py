@@ -13,12 +13,10 @@ Usage:
     TRANSPORT=http PORT=3001 python src/server.py
 """
 
-# Redirect print to stderr so stdout stays clean for MCP JSON-RPC
+# Log explicitly to stderr; stdout belongs to the MCP stdio transport.
 import sys
 import os
 
-_orig_stdout = sys.stdout
-sys.stdout = sys.stderr
 
 # Add the src directory to Python path for relative imports
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -37,7 +35,7 @@ _port = int(os.environ.get("PORT", "3001"))
 mcp = FastMCP(
     "resolve-mcp-server",
     json_response=True,
-    host="0.0.0.0",
+    host=os.environ.get("HOST", "127.0.0.1"),
     port=_port,
 )
 
@@ -56,15 +54,20 @@ render.register(mcp)
 fusion.register(mcp)
 vision.register(mcp)
 
+from src.tools import analysis
+from src import resources
+analysis.register(mcp)
+resources.register(mcp)
+
 
 def main():
     transport = os.environ.get("TRANSPORT", "stdio")
 
     if transport == "http":
-        print(f"[resolve-mcp] v1.0.0 | Starting HTTP transport on port {_port}", file=sys.stderr)
+        print(f"[resolve-mcp] v1.1.0 | Starting HTTP transport on port {_port}", file=sys.stderr)
         mcp.run(transport="streamable-http")
     else:
-        print("[resolve-mcp] v1.0.0 | Starting stdio transport", file=sys.stderr)
+        print("[resolve-mcp] v1.1.0 | Starting stdio transport", file=sys.stderr)
         mcp.run(transport="stdio")
 
 

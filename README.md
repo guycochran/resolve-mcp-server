@@ -1,5 +1,8 @@
 # DaVinci Resolve MCP Server
 
+**Resolve 21 / Windows development update:** see [WINDOWS.md](WINDOWS.md) for setup,
+new analysis tools and resources, and current validation limitations.
+
 **Talk to your timeline.** Control DaVinci Resolve with natural language through Claude — browse projects, swap clips, color grade, render for YouTube, and see what's in any frame with AI vision. From your desk or from your phone, anywhere in the world.
 
 ```
