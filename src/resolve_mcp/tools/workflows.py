@@ -165,5 +165,8 @@ def register(mcp):
             raise ValueError("Resolve is already rendering.")
         result = project.RenderWithQuickExport(preset, {"TargetDir": output_dir, "CustomName": filename,
                                                         "EnableUpload": False})
-        return {"success": bool(result) and not isinstance(result, str), "result": result,
-                "upload_enabled": False, "preset": preset}
+        status = str(result.get("Status", "")).lower() if isinstance(result, dict) else ""
+        success = (status in ("complete", "completed", "success")) if status else None
+        if not result or isinstance(result, str) or (isinstance(result, dict) and result.get("Error")):
+            success = False
+        return {"success": success, "native_status": result, "upload_enabled": False, "preset": preset}

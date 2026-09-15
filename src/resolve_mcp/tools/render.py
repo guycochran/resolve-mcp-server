@@ -50,7 +50,7 @@ def register(mcp: FastMCP):
 
         result = project.RenderWithQuickExport(preset, params)
         if result:
-            return json.dumps({"status": "rendering", "preset": preset, "result": str(result)})
+            return json.dumps({"preset": preset, "native_status": result})
         return f"Failed to start Quick Export with preset '{preset}'. Check preset name with resolve_list_render_presets."
 
     @mcp.tool()

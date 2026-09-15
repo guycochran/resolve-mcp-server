@@ -73,14 +73,16 @@ def register(mcp: FastMCP):
             for i in range(1, count + 1):
                 tl = project.GetTimelineByIndex(i)
                 if tl and tl.GetName() == name:
-                    project.SetCurrentTimeline(tl)
-                    return f"Switched to timeline: {name}"
+                    if project.SetCurrentTimeline(tl):
+                        return f"Switched to timeline: {name}"
+                    return f"Resolve refused to switch to timeline: {name}"
             return f"Timeline '{name}' not found."
         elif index > 0:
             tl = project.GetTimelineByIndex(index)
             if tl:
-                project.SetCurrentTimeline(tl)
-                return f"Switched to timeline {index}: {tl.GetName()}"
+                if project.SetCurrentTimeline(tl):
+                    return f"Switched to timeline {index}: {tl.GetName()}"
+                return f"Resolve refused to switch to timeline {index}."
             return f"No timeline at index {index}."
         return "Provide either a timeline name or index."
 

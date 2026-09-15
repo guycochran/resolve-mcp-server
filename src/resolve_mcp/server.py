@@ -73,7 +73,7 @@ def http_app(instance, config):
 # Only a repository-local .env, or an explicitly selected file, is loaded.
 _default_env = Path(__file__).resolve().parents[2] / ".env"
 load_dotenv(os.environ.get("RESOLVE_MCP_ENV_FILE", str(_default_env)), override=False)
-mcp = None
+mcp = create_server(Config())
 
 
 def main():

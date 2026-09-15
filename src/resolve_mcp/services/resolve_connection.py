@@ -2,9 +2,10 @@
 import importlib
 import os
 import sys
+import subprocess
 import threading
 import time
-from pathlib import Path
+from pathlib import PurePosixPath, PureWindowsPath
 
 _resolve = None
 _last_error = None
@@ -18,15 +19,16 @@ RETRY_INTERVAL = 2.0
 def scripting_paths(platform=None, env=None):
     platform = sys.platform if platform is None else platform
     env = os.environ if env is None else env
+    path_type = PureWindowsPath if platform == "win32" else PurePosixPath
     if platform == "win32":
-        base = str(Path(env.get("PROGRAMDATA", "C:/ProgramData")) /
+        base = str(path_type(env.get("PROGRAMDATA", "C:/ProgramData")) /
                    "Blackmagic Design/DaVinci Resolve/Support/Developer/Scripting")
     elif platform == "darwin":
         base = "/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting"
     else:
         base = "/opt/resolve/Developer/Scripting"
     api = env.get("RESOLVE_SCRIPT_API") or base
-    return env.get("PYTHONPATH_RESOLVE") or str(Path(api) / "Modules")
+    return env.get("PYTHONPATH_RESOLVE") or str(path_type(api) / "Modules")
 
 
 def _connect():
@@ -122,7 +124,7 @@ def reconnect() -> bool:
 
 def status() -> dict:
     connected = is_connected()
-    result = {"connected": connected, "scripting_modules": scripting_paths(),
+    result = {"connected": connected, "process_running": process_running(), "scripting_modules": scripting_paths(),
               "python": sys.version.split()[0], "platform": sys.platform,
               "error": None if connected else _last_error}
     if connected:
@@ -134,3 +136,17 @@ def status() -> dict:
         except Exception as exc:
             result.update(connected=False, error=f"Resolve disconnected during status read: {exc}")
     return result
+
+
+def process_running() -> bool | None:
+    """OS process presence is separate from scripting availability; unknown is None."""
+    try:
+        if sys.platform == "win32":
+            result = subprocess.run(["tasklist", "/FI", "IMAGENAME eq Resolve.exe", "/FO", "CSV", "/NH"],
+                                    capture_output=True, text=True, timeout=3,
+                                    creationflags=subprocess.CREATE_NO_WINDOW)
+            return "resolve.exe" in result.stdout.lower() if result.returncode == 0 else None
+        result = subprocess.run(["pgrep", "-x", "Resolve"], capture_output=True, timeout=3)
+        return result.returncode == 0 if result.returncode in (0, 1) else None
+    except (OSError, subprocess.SubprocessError):
+        return None
