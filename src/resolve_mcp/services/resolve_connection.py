@@ -37,6 +37,11 @@ def _connect():
     modules = scripting_paths()
     if modules not in sys.path:
         sys.path.insert(0, modules)
+    if sys.platform == "win32":
+        # Fusion must discover the same runtime that owns this interpreter.
+        # Bundled/unregistered Python installations are not found via the registry.
+        # base_prefix points to the DLL directory, unlike a venv's prefix.
+        os.environ.setdefault("FUSION_PYTHON3_HOME", sys.base_prefix)
     try:
         module = importlib.import_module("DaVinciResolveScript")
         candidate = module.scriptapp("Resolve")
@@ -124,7 +129,8 @@ def reconnect() -> bool:
 
 def status() -> dict:
     connected = is_connected()
-    result = {"connected": connected, "process_running": process_running(), "scripting_modules": scripting_paths(),
+    result = {"connected": connected, "process_running": True if connected else process_running(),
+              "scripting_modules": scripting_paths(),
               "python": sys.version.split()[0], "platform": sys.platform,
               "error": None if connected else _last_error}
     if connected:
