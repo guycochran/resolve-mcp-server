@@ -69,7 +69,7 @@ def snapshot(name: str):
         return [dict(job, status=project.GetRenderJobStatus(job["JobId"]) or {})
                 for job in project.GetRenderJobList() or []]
     if name == "render/formats":
-        return {key: {"name": value, "codecs": project.GetRenderCodecs(value) or {}}
+        return {key: {"extension": value, "codecs": project.GetRenderCodecs(value) or {}}
                 for key, value in (project.GetRenderFormats() or {}).items()}
     if name == "render/presets":
         return {"standard": project.GetRenderPresetList() or [], "quick_export": project.GetQuickExportRenderPresets() or []}

@@ -3,7 +3,7 @@
 import json
 from mcp.server.fastmcp import FastMCP
 from ..services.resolve_connection import (
-    get_resolve, get_project, get_timeline, is_connected, reconnect,
+    get_resolve, get_project, get_timeline, is_connected, reconnect, status as connection_status,
 )
 
 
@@ -16,7 +16,7 @@ def register(mcp: FastMCP):
         Returns JSON with product name, version, current page, project name,
         timeline name, and connection state."""
         if not is_connected():
-            return json.dumps({"connected": False, "error": "Not connected to DaVinci Resolve. Is it running?"})
+            return json.dumps(connection_status())
 
         resolve = get_resolve()
         status = {
@@ -25,6 +25,7 @@ def register(mcp: FastMCP):
             "version": resolve.GetVersionString(),
             "page": resolve.GetCurrentPage(),
         }
+        status["edition"] = "Studio" if "studio" in status["product"].lower() else "Free/unknown"
 
         try:
             project = get_project()

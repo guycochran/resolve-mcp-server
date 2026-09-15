@@ -2,7 +2,7 @@
 
 import json
 from mcp.server.fastmcp import FastMCP
-from ..services.resolve_connection import get_media_pool, get_media_storage
+from ..services.resolve_connection import get_media_pool
 
 
 def _folder_to_dict(folder) -> dict:

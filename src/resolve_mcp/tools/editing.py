@@ -1,306 +1,124 @@
-"""Editing / clip property tools — transform, speed, enable/disable, compound clips, replace."""
-
+"""Existing editing tool names, with validation and recoverable replacement."""
 import json
-from mcp.server.fastmcp import FastMCP
+import math
 from ..services.resolve_connection import get_timeline, get_project
+from ..services.lookup import timeline_clip, item_info
+from ..services.replacement import replace_clip, backup_timeline
+from ..services.transforms import set_transform
 
 
 def _get_clip_at_playhead():
-    """Get the timeline item at the current playhead position."""
-    tl = get_timeline()
-    item = tl.GetCurrentVideoItem()
+    item = get_timeline().GetCurrentVideoItem()
     if item is None:
         raise RuntimeError("No video clip at the current playhead position.")
     return item
 
 
 def _get_clip_by_index(track_index: int, clip_index: int):
-    """Get a specific clip by track and clip index."""
-    tl = get_timeline()
-    items = tl.GetItemListInTrack("video", track_index)
-    if not items or clip_index < 1 or clip_index > len(items):
-        raise RuntimeError(f"No clip at video track {track_index}, clip index {clip_index}.")
-    return items[clip_index - 1]
+    return timeline_clip(get_timeline(), "video", track_index, clip_index)
 
 
-def register(mcp: FastMCP):
+def _selected(track_index, clip_index, writable=False):
+    timeline = get_timeline()
+    if track_index == clip_index == 0:
+        item = _get_clip_at_playhead()
+        if writable:
+            track_type, track = item.GetTrackTypeAndIndex()
+            if timeline.GetIsTrackLocked(track_type, track):
+                raise ValueError("The selected clip's track is locked.")
+        return item
+    if track_index <= 0 or clip_index <= 0:
+        raise ValueError("Provide both positive track_index and clip_index, or leave both zero for playhead.")
+    return timeline_clip(timeline, "video", track_index, clip_index, writable)
 
+
+def register(mcp):
     @mcp.tool()
-    def resolve_set_clip_transform(
-        pan: float | None = None,
-        tilt: float | None = None,
-        zoom_x: float | None = None,
-        zoom_y: float | None = None,
-        rotation: float | None = None,
-        opacity: float | None = None,
-        track_index: int = 0,
-        clip_index: int = 0,
-    ) -> str:
-        """Set transform properties on a timeline clip. Targets clip at playhead by default.
-
-        Args:
-            pan: Horizontal position (negative = left, positive = right).
-            tilt: Vertical position (negative = down, positive = up).
-            zoom_x: Horizontal scale (1.0 = 100%, 2.0 = 200%).
-            zoom_y: Vertical scale (1.0 = 100%). Omit to match zoom_x.
-            rotation: Rotation in degrees (-360 to 360).
-            opacity: Opacity (0.0 to 100.0).
-            track_index: Video track (1-based). 0 = use playhead.
-            clip_index: Clip position on track (1-based). 0 = use playhead.
-        """
-        if track_index > 0 and clip_index > 0:
-            item = _get_clip_by_index(track_index, clip_index)
-        else:
-            item = _get_clip_at_playhead()
-
-        changes = []
-        if pan is not None:
-            item.SetProperty("Pan", pan)
-            changes.append(f"Pan={pan}")
-        if tilt is not None:
-            item.SetProperty("Tilt", tilt)
-            changes.append(f"Tilt={tilt}")
-        if zoom_x is not None:
-            item.SetProperty("ZoomX", zoom_x)
-            changes.append(f"ZoomX={zoom_x}")
-            if zoom_y is None:
-                item.SetProperty("ZoomY", zoom_x)
-        if zoom_y is not None:
-            item.SetProperty("ZoomY", zoom_y)
-            changes.append(f"ZoomY={zoom_y}")
-        if rotation is not None:
-            item.SetProperty("RotationAngle", rotation)
-            changes.append(f"Rotation={rotation}")
-        if opacity is not None:
-            item.SetProperty("Opacity", opacity)
-            changes.append(f"Opacity={opacity}")
-
-        if changes:
-            return f"Set on '{item.GetName()}': {', '.join(changes)}"
-        return "No properties specified to change."
+    def resolve_set_clip_transform(pan: float | None = None, tilt: float | None = None,
+                                   zoom_x: float | None = None, zoom_y: float | None = None,
+                                   rotation: float | None = None, opacity: float | None = None,
+                                   track_index: int = 0, clip_index: int = 0) -> str:
+        """Set pan/tilt, zoom (0–100), rotation (-360–360), opacity (0–100).
+        Targets playhead, or explicit 1-based video track/clip indices. Validates before writing.
+        Returns JSON including original values and any partial failure."""
+        values = {k: v for k, v in (("Pan", pan), ("Tilt", tilt), ("ZoomX", zoom_x),
+                  ("ZoomY", zoom_y if zoom_y is not None else zoom_x),
+                  ("RotationAngle", rotation), ("Opacity", opacity)) if v is not None}
+        return json.dumps(set_transform(_selected(track_index, clip_index, True), get_timeline(), values))
 
     @mcp.tool()
     def resolve_get_clip_transform(track_index: int = 0, clip_index: int = 0) -> str:
-        """Get current transform values of a timeline clip. Targets clip at playhead by default.
-
-        Args:
-            track_index: Video track (1-based). 0 = use playhead.
-            clip_index: Clip position on track (1-based). 0 = use playhead.
-
-        Returns JSON with Pan, Tilt, Zoom, Rotation, Opacity values."""
-        if track_index > 0 and clip_index > 0:
-            item = _get_clip_by_index(track_index, clip_index)
-        else:
-            item = _get_clip_at_playhead()
-
-        props = {}
-        for key in ["Pan", "Tilt", "ZoomX", "ZoomY", "RotationAngle", "Opacity",
-                     "CropLeft", "CropRight", "CropTop", "CropBottom"]:
-            val = item.GetProperty(key)
-            if val is not None:
-                props[key] = val
-
-        props["name"] = item.GetName()
-        return json.dumps(props, indent=2)
+        """Read clip transform values at the playhead or explicit 1-based video track/clip indices."""
+        item = _selected(track_index, clip_index)
+        props = {key: item.GetProperty(key) for key in ("Pan", "Tilt", "ZoomX", "ZoomY", "RotationAngle",
+                 "Opacity", "CropLeft", "CropRight", "CropTop", "CropBottom")}
+        return json.dumps(dict(props, name=item.GetName()))
 
     @mcp.tool()
     def resolve_set_clip_speed(speed: float, track_index: int = 0, clip_index: int = 0) -> str:
-        """Change the playback speed of a clip.
-
-        Args:
-            speed: Speed percentage (100 = normal, 200 = 2x, 50 = half speed).
-            track_index: Video track (1-based). 0 = use playhead.
-            clip_index: Clip position on track (1-based). 0 = use playhead.
-        """
-        if track_index > 0 and clip_index > 0:
-            item = _get_clip_by_index(track_index, clip_index)
-        else:
-            item = _get_clip_at_playhead()
-
-        mpi = item.GetMediaPoolItem()
-        if mpi and mpi.SetClipProperty("Speed", str(speed)):
-            return f"Set speed to {speed}% on '{item.GetName()}'"
-        return f"Failed to set speed. Try using the Retime controls in the Edit page."
+        """Legacy speed-property request. Resolve may reject it; timeline retiming is not guaranteed by the API.
+        This acts on the underlying media-pool property, potentially affecting other uses of the media."""
+        if not math.isfinite(speed) or speed <= 0:
+            raise ValueError("Speed percentage must be finite and positive.")
+        item = _selected(track_index, clip_index, True)
+        media = item.GetMediaPoolItem()
+        result = bool(media and media.SetClipProperty("Speed", str(speed)))
+        return json.dumps({"success": result, "clip": item.GetName(), "requested_speed": speed,
+                           "scope": "media pool property", "detail": "Use Edit-page Retime controls if unsupported."})
 
     @mcp.tool()
-    def resolve_set_clip_enabled(
-        enabled: bool,
-        track_index: int = 0,
-        clip_index: int = 0,
-    ) -> str:
-        """Enable or disable a clip on the timeline.
-
-        Args:
-            enabled: True to enable, False to disable.
-            track_index: Video track (1-based). 0 = use playhead.
-            clip_index: Clip position on track (1-based). 0 = use playhead.
-        """
-        if track_index > 0 and clip_index > 0:
-            item = _get_clip_by_index(track_index, clip_index)
-        else:
-            item = _get_clip_at_playhead()
-
-        item.SetClipEnabled(enabled)
-        state = "enabled" if enabled else "disabled"
-        return f"Clip '{item.GetName()}' {state}."
+    def resolve_set_clip_enabled(enabled: bool, track_index: int = 0, clip_index: int = 0) -> str:
+        """Enable/disable a clip at playhead or explicit 1-based video track/clip indices."""
+        item = _selected(track_index, clip_index, True)
+        before = item.GetClipEnabled()
+        result = item.SetClipEnabled(enabled)
+        return json.dumps({"success": bool(result), "clip": item.GetName(), "before": before,
+                           "requested_enabled": enabled})
 
     @mcp.tool()
-    def resolve_create_compound_clip(
-        track_index: int = 1,
-        start_clip: int = 1,
-        end_clip: int = 0,
-        name: str = "Compound Clip",
-    ) -> str:
-        """Create a compound clip from a range of clips on a track.
-
-        Args:
-            track_index: Video track (1-based, default: 1).
-            start_clip: First clip index (1-based, default: 1).
-            end_clip: Last clip index (1-based, default: all remaining).
-            name: Name for the compound clip.
-        """
-        tl = get_timeline()
-        items = tl.GetItemListInTrack("video", track_index)
-        if not items:
-            return "No clips on the specified track."
-
-        if end_clip <= 0:
-            end_clip = len(items)
-
-        selection = items[start_clip - 1:end_clip]
-        if not selection:
-            return "No clips in the specified range."
-
-        result = tl.CreateCompoundClip(selection, {"name": name})
-        if result:
-            return f"Created compound clip '{name}' from {len(selection)} clips."
-        return "Failed to create compound clip."
-
-    def _find_media_pool_clip(name: str):
-        """Find a media pool item by name, searching all folders."""
-        pool = get_project().GetMediaPool()
-
-        def search_folder(folder):
-            for clip in folder.GetClipList():
-                if clip.GetName() == name:
-                    return clip
-            for sub in folder.GetSubFolderList():
-                result = search_folder(sub)
-                if result:
-                    return result
-            return None
-
-        return search_folder(pool.GetRootFolder())
+    def resolve_create_compound_clip(track_index: int = 1, start_clip: int = 1, end_clip: int = 0,
+                                     name: str = "Compound Clip") -> str:
+        """Create a compound clip from a 1-based video-track range. Creates a recovery timeline first."""
+        timeline = get_timeline()
+        timeline_clip(timeline, "video", track_index, start_clip, writable=True)
+        items = timeline.GetItemListInTrack("video", track_index) or []
+        end_clip = end_clip or len(items)
+        if not start_clip <= end_clip <= len(items) or not name.strip():
+            raise ValueError("Invalid compound clip range or name.")
+        backup = backup_timeline(get_project(), timeline)
+        result = timeline.CreateCompoundClip(items[start_clip - 1:end_clip], {"name": name})
+        return json.dumps({"success": bool(result), "name": name, "clip_count": end_clip-start_clip+1,
+                           "recovery_timeline": backup.GetName()})
 
     @mcp.tool()
-    def resolve_delete_clip(
-        track_type: str = "video",
-        track_index: int = 2,
-        clip_index: int = 1,
-        ripple: bool = False,
-    ) -> str:
-        """Delete a clip from the timeline.
-
-        Args:
-            track_type: "video" or "audio" (default: "video").
-            track_index: Track number (1-based, default: 2).
-            clip_index: Clip position on track (1-based, default: 1).
-            ripple: If True, ripple delete (close the gap). Default: False.
-        """
-        tl = get_timeline()
-        items = tl.GetItemListInTrack(track_type, track_index)
-        if not items or clip_index < 1 or clip_index > len(items):
-            return f"No clip at {track_type} track {track_index}, index {clip_index}."
-
-        clip = items[clip_index - 1]
-        name = clip.GetName()
-        start = clip.GetStart()
-        end = clip.GetEnd()
-
-        result = tl.DeleteClips([clip], ripple)
-        if result:
-            return json.dumps({
-                "deleted": name,
-                "record_start": start,
-                "record_end": end,
-                "duration_frames": end - start,
-                "ripple": ripple,
-            }, indent=2)
-        return f"Failed to delete clip '{name}'."
+    def resolve_delete_clip(track_type: str = "video", track_index: int = 2, clip_index: int = 1,
+                            ripple: bool = False) -> str:
+        """Delete exactly one clip; defaults to non-ripple. Linked peers remain. Creates a recovery copy."""
+        timeline, project = get_timeline(), get_project()
+        item = timeline_clip(timeline, track_type, track_index, clip_index, writable=True)
+        before = item_info(item)
+        backup = backup_timeline(project, timeline)
+        linked = item.GetLinkedItems() or []
+        try:
+            if linked and not timeline.SetClipsLinked([item, *linked], False):
+                raise RuntimeError("Could not unlink target; delete was not attempted.")
+            if not timeline.DeleteClips([item], ripple):
+                raise RuntimeError("Resolve refused deletion.")
+            return json.dumps({"success": True, "deleted": before, "ripple": ripple,
+                               "recovery_timeline": backup.GetName()})
+        except Exception as exc:
+            selected = project.SetCurrentTimeline(backup)
+            return json.dumps({"success": False, "error": str(exc), "recovery_timeline": backup.GetName(),
+                               "backup_selected": bool(selected)})
 
     @mcp.tool()
-    def resolve_replace_clip(
-        track_index: int,
-        clip_index: int,
-        new_clip_name: str,
-        source_start_frame: int = 0,
-        source_end_frame: int = 0,
-        media_type: int = 1,
-    ) -> str:
-        """Replace a clip on the timeline with a different media pool clip.
-
-        Equivalent to a three-point overwrite edit: deletes the old clip and
-        inserts the new clip at the same timeline position. Source in/out points
-        control which portion of the new clip is used.
-
-        Args:
-            track_index: Video track number (1-based, e.g., 2 for V2).
-            clip_index: Clip position on that track (1-based).
-            new_clip_name: Name of the replacement clip in the media pool.
-            source_start_frame: Source in point (frame number within the clip, 0 = beginning).
-            source_end_frame: Source out point (0 = auto-match the original duration).
-            media_type: 1 = video only (default), 2 = audio only. Omit for both.
-
-        Returns: JSON with the old clip info, new clip info, and timeline position.
-        """
-        tl = get_timeline()
-        pool = get_project().GetMediaPool()
-
-        # 1. Get the existing clip's position
-        items = tl.GetItemListInTrack("video", track_index)
-        if not items or clip_index < 1 or clip_index > len(items):
-            return f"No clip at video track {track_index}, index {clip_index}."
-
-        old_clip = items[clip_index - 1]
-        old_name = old_clip.GetName()
-        record_start = old_clip.GetStart()
-        record_end = old_clip.GetEnd()
-        old_duration = record_end - record_start
-
-        # 2. Find the replacement clip in media pool
-        new_mp_item = _find_media_pool_clip(new_clip_name)
-        if not new_mp_item:
-            return f"Could not find '{new_clip_name}' in the media pool."
-
-        # 3. Calculate source end if not specified (match original duration)
-        if source_end_frame <= 0:
-            source_end_frame = source_start_frame + old_duration
-
-        # 4. Delete the old clip (no ripple — keep the gap)
-        delete_result = tl.DeleteClips([old_clip], False)
-        if not delete_result:
-            return f"Failed to delete old clip '{old_name}'. Replace aborted."
-
-        # 5. Insert replacement at the same record position
-        clip_info = {
-            "mediaPoolItem": new_mp_item,
-            "trackIndex": track_index,
-            "recordFrame": record_start,
-            "startFrame": source_start_frame,
-            "endFrame": source_end_frame,
-            "mediaType": media_type,
-        }
-        new_items = pool.AppendToTimeline([clip_info])
-
-        if new_items:
-            return json.dumps({
-                "replaced": old_name,
-                "with": new_clip_name,
-                "track": track_index,
-                "record_position": record_start,
-                "source_in": source_start_frame,
-                "source_out": source_end_frame,
-                "duration_frames": source_end_frame - source_start_frame,
-                "media_type": "video only" if media_type == 1 else "audio only" if media_type == 2 else "video+audio",
-            }, indent=2)
-        return f"Deleted '{old_name}' but failed to insert '{new_clip_name}'. You may need to undo (Cmd+Z)."
+    def resolve_replace_clip(track_index: int, clip_index: int, new_clip_name: str,
+                             source_start_frame: int = 0, source_end_frame: int = 0, media_type: int = 1,
+                             dry_run: bool = False, new_media_id: str = "") -> str:
+        """Replace at the original record position without ripple. Video-only preserves linked audio.
+        Indices are 1-based. media_type 1 targets video; 2 targets audio. Combined replacement is rejected.
+        Source out is INCLUSIVE; zero auto-matches original duration. Source FPS must match timeline.
+        Validates bounds/locks/ambiguity and creates a recovery timeline before mutation.
+        dry_run returns the plan without edits; new_media_id disambiguates duplicate names."""
+        return json.dumps(replace_clip(track_index, clip_index, new_clip_name, source_start_frame,
+                                       source_end_frame, media_type, dry_run, new_media_id))

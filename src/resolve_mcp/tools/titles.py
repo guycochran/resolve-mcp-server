@@ -1,6 +1,5 @@
 """Title & text tools — insert Fusion titles, modify text content."""
 
-import json
 from mcp.server.fastmcp import FastMCP
 from ..services.resolve_connection import get_resolve, get_timeline
 

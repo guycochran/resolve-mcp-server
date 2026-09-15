@@ -7,23 +7,19 @@ for DaVinci Resolve frame grabs.
 
 import base64
 import os
-import tempfile
-from pathlib import Path
+from io import BytesIO
 
 import httpx
 from PIL import Image
 
 API_BASE = "https://api.moondream.ai/v1"
-_api_key: str | None = None
 
 
 def _get_api_key() -> str:
-    global _api_key
-    if _api_key is None:
-        _api_key = os.environ.get("MOONDREAM_API_KEY", "")
+    _api_key = os.environ.get("MOONDREAM_API_KEY", "")
     if not _api_key:
         raise RuntimeError(
-            "MOONDREAM_API_KEY not set. Get a free key at https://console.moondream.ai "
+            "MOONDREAM_API_KEY not set. Get a key at https://console.moondream.ai "
             "and set it in your environment or .env file."
         )
     return _api_key
@@ -35,24 +31,13 @@ def _prepare_image(image_path: str) -> str:
     Resolve exports large PNGs (6MB+). Moondream expects reasonably-sized
     images, so we convert to JPEG and cap the resolution at 1920px wide.
     """
-    img = Image.open(image_path)
-
-    # Resize if wider than 1920
-    max_width = 1920
-    if img.width > max_width:
-        ratio = max_width / img.width
-        img = img.resize((max_width, int(img.height * ratio)), Image.LANCZOS)
-
-    # Convert to RGB if needed (e.g., RGBA PNGs)
-    if img.mode in ("RGBA", "P"):
-        img = img.convert("RGB")
-
-    # Save as JPEG to a temp file
-    tmp_path = os.path.join(tempfile.gettempdir(), "resolve-mcp-frames", "moondream_input.jpg")
-    os.makedirs(os.path.dirname(tmp_path), exist_ok=True)
-    img.save(tmp_path, "JPEG", quality=85)
-
-    data = Path(tmp_path).read_bytes()
+    with Image.open(image_path) as original:
+        img = original.convert("RGB")
+        img.thumbnail((1920, 1920), Image.Resampling.LANCZOS)
+        buffer = BytesIO()
+        img.save(buffer, "JPEG", quality=85)
+        img.close()
+    data = buffer.getvalue()
     b64 = base64.b64encode(data).decode("utf-8")
     return f"data:image/jpeg;base64,{b64}"
 

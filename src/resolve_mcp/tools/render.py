@@ -91,10 +91,12 @@ def register(mcp: FastMCP):
         if frame_rate > 0:
             settings["FrameRate"] = frame_rate
 
-        project.SetRenderSettings(settings)
+        if not project.SetRenderSettings(settings):
+            return json.dumps({"success": False, "error": "Resolve rejected render settings; no job added."})
 
         if format and codec:
-            project.SetCurrentRenderFormatAndCodec(format, codec)
+            if not project.SetCurrentRenderFormatAndCodec(format, codec):
+                return json.dumps({"success": False, "error": "Resolve rejected format/codec; no job added."})
 
         job_id = project.AddRenderJob()
         if job_id:
