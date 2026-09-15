@@ -1,241 +1,84 @@
-# Architecture — DaVinci Resolve MCP Server
+# Architecture
 
-## How It All Connects
+## Foundation retained
 
-```
-                          THE INTERNET
-                               |
-                               v
-                    +-----------------------+
-                    |   Cloudflare Tunnel   |
-                    |  resolve.cochran.cloud|
-                    +-----------+-----------+
-                                |
-                                | HTTPS -> localhost:3001
-                                v
-+------------------+   +--------------------------+   +-------------------------+
-|                  |   |                          |   |                         |
-|  Claude Mobile   |-->|  Resolve MCP Server      |-->|  DaVinci Resolve        |
-|  (Phone/Tablet)  |   |  (Python + FastMCP)      |   |  Studio 20.3.1          |
-|                  |   |                          |   |                         |
-+------------------+   |  Transport: HTTP :3001   |   |  Scripting API          |
-                       |                          |   |  (fusionscript.so)      |
-+------------------+   |  53 MCP Tools:           |   |                         |
-|                  |   |  - Connection (4)        |   |  Project Manager        |
-|  Claude Desktop  |-->|  - Project (6)           |-->|  Media Pool             |
-|  (This Mac)     |   |  - Timeline (8)          |   |  Timelines              |
-|                  |   |  - Media (5)             |   |  Color Page             |
-+------------------+   |  - Editing (7)           |   |  Fusion                 |
-       |               |  - Color (6)             |   |  Deliver                |
-       | stdio         |  - Markers (3)           |   |                         |
-       | (JSON-RPC)    |  - Titles (2)            |   +-------------------------+
-                       |  - Render (6)            |
-                       |  - Fusion (3)            |
-                       |  - Vision (3)            |
-                       |                          |
-                       +------------+-------------+
-                                    |
-                                    | HTTPS API calls
-                                    v
-                       +-------------------------+
-                       |                         |
-                       |  Moondream AI           |
-                       |  api.moondream.ai/v1    |
-                       |                         |
-                       |  - /caption             |
-                       |  - /detect              |
-                       |  - /query               |
-                       |  - /point               |
-                       |                         |
-                       +-------------------------+
+The original server uses FastMCP, a central connection service, eleven tool modules,
+and a Moondream HTTP client. Version 2.0 evolves those modules into an installable
+`resolve_mcp` package; it does not replace the editing model or MCP framework.
+
+```text
+src/resolve_mcp/
+  server.py               FastMCP composition, serialized operations, stdio/HTTP
+  config.py               Environment validation and conservative network defaults
+  security.py             Shared bearer-token ASGI authentication
+  resources.py            Sixteen read-only JSON snapshots
+  services/
+    resolve_connection.py Platform paths, health cache, retry cooldown, diagnostics
+    lookup.py             Deterministic media/tree/track lookup
+    replacement.py        Source bounds, non-ripple replacement, recovery timelines
+    transforms.py         Validate before writing; report partial failures
+    timecode.py           NDF/DF frame conversion and exact playhead offset
+    results.py            Structured errors and native method availability
+    moondream.py          Existing cloud vision client, in-memory JPEG preparation
+  tools/
+    connection.py project.py timeline.py media.py editing.py
+    color.py markers.py titles.py render.py fusion.py vision.py
+    analysis.py           Resolve-native AI, distinct from Moondream
+    workflows.py          Editorial tasks built from shared services
+src/server.py             Legacy source-launch compatibility
+tests/                   Mocked units plus real MCP protocol startup tests
 ```
 
-## Data Flow
+The resources remain one short module sharing snapshot helpers; splitting each
+three-line reader into a separate file would add little isolation.
 
-### Local (Claude Desktop -> Resolve)
-```
-Claude Desktop
-    |
-    | stdin/stdout (JSON-RPC over stdio)
-    v
-start.sh
-    |
-    | Sets RESOLVE_SCRIPT_API, RESOLVE_SCRIPT_LIB, PYTHONPATH
-    v
-.venv/bin/python3 src/server.py
-    |
-    | import DaVinciResolveScript (fusionscript.so)
-    v
-Resolve Scripting API
-    |
-    | Direct Python method calls
-    v
-DaVinci Resolve (running on same machine)
-```
+## Execution and concurrency
 
-### Remote (Phone -> Cloudflare -> Resolve)
-```
-Phone (Claude Mobile)
-    |
-    | HTTPS POST to resolve.cochran.cloud/mcp
-    v
-Cloudflare Edge (Seattle)
-    |
-    | QUIC tunnel (4 connections)
-    v
-cloudflared (localhost)
-    |
-    | HTTP proxy -> localhost:3001
-    v
-Resolve MCP Server (Uvicorn, streamable-http)
-    |
-    | Python scripting API
-    v
-DaVinci Resolve
-```
+Every registered tool and resource is serialized under the server's operation
+lock, including async vision requests. This protects the shared Resolve selection
+and complete delete/insert sequences from concurrent calls within this process.
+It does not prevent a person or a second server process from changing Resolve.
+Use one process and coordinate exclusive editing access.
 
-### AI Vision Pipeline
-```
-DaVinci Resolve
-    |
-    | ExportCurrentFrameAsStill() -> 6MB PNG
-    v
-Pillow (PIL)
-    |
-    | Convert to JPEG, cap at 1920px -> ~250KB
-    v
-Base64 encode -> data:image/jpeg;base64,...
-    |
-    | HTTPS POST with X-Moondream-Auth header
-    v
-Moondream API (api.moondream.ai/v1)
-    |
-    | Returns JSON: caption, detections, answer, or points
-    v
-Claude formats response for user
-```
+Connection checks are cached for five seconds; failed connections retry at most
+once every two seconds. Forced reconnect bypasses this delay. Failed operations
+are not automatically replayed, because repeating a mutation can duplicate work.
 
-### Clip Replacement (Three-Point Overwrite Edit)
-```
-Claude: "Replace the b-roll at 01:00:13:22 with SOUTH_POLE_TAKE_OFF"
-    |
-    v
-resolve_replace_clip(track_index=2, clip_index=2, new_clip_name="A663C012_SOUTH_POLE_TAKE_OFF.mov")
-    |
-    | 1. Get old clip's record position (start/end frames)
-    | 2. Search media pool recursively for replacement clip
-    | 3. Calculate source end = source_start + original_duration
-    |
-    v
-timeline.DeleteClips([old_clip], False)   <-- no ripple, keeps gap
-    |
-    v
-pool.AppendToTimeline([{
-    "mediaPoolItem": new_mp_item,
-    "trackIndex": 2,
-    "recordFrame": 86734,          <-- exact same position
-    "startFrame": 0,
-    "endFrame": 120,               <-- matches original duration
-    "mediaType": 1                 <-- video only (preserves audio)
-}])
-    |
-    v
-New clip sits at same timeline position with same duration
-```
+## Compatibility
 
-## Network Map
+All 53 original MCP tool names remain, verified against the main-branch source.
+Existing tool responses generally remain JSON text or readable text. New tools use
+JSON-compatible dict responses. Resources use explicit success/data/error envelopes.
 
-```
-+------------------------------------------------------------------+
-|  Your Mac (Edit Station)                                         |
-|                                                                  |
-|  +---------------------------+  +-----------------------------+  |
-|  | DaVinci Resolve Studio    |  | Resolve MCP Server          |  |
-|  | (GUI + Scripting API)     |<-| Python 3.14 / FastMCP       |  |
-|  |                           |  | Port 3001 (HTTP)            |  |
-|  +---------------------------+  | or stdio (Claude Desktop)   |  |
-|                                 +-------------+---------------+  |
-|                                               |                  |
-|  +---------------------------+                |                  |
-|  | ATEM MCP Server           |  +-------------+---------------+  |
-|  | Node.js                   |  | cloudflared                 |  |
-|  | Port 3000 (HTTP)          |  | Tunnel: 0226f8c4-...       |  |
-|  +-------------+-------------+  +-------------+---------------+  |
-|                |                              |                  |
-+------------------------------------------------------------------+
-                 |                              |
-                 |   Cloudflare Tunnel (QUIC)   |
-                 |                              |
-         +-------+------------------------------+-------+
-         |              Cloudflare Edge                  |
-         |                                               |
-         |  atem.cochran.cloud    -> localhost:3000       |
-         |  bmatem.cochran.cloud  -> localhost:3000       |
-         |  resolve.cochran.cloud -> localhost:3001       |
-         |                                               |
-         +-----------------------------------------------+
-                             |
-                          HTTPS
-                             |
-                    +--------+--------+
-                    |  Claude Mobile  |
-                    |  (Anywhere)     |
-                    +-----------------+
-```
+Source launchers remain available. Internal imports move from generic `src.*`
+to `resolve_mcp.*`; third-party code importing the old internal modules should
+update imports. The legacy `src.server` entry point remains.
 
-## File Structure
+## Mutation recovery
 
-```
-~/resolve-mcp-server/
-|
-+-- src/
-|   +-- server.py                  # Entry point, creates FastMCP, registers tools
-|   |                              # Supports stdio + streamable-http transport
-|   |
-|   +-- services/
-|   |   +-- resolve_connection.py  # Loads fusionscript.so, manages Resolve connection
-|   |   |                          # Exports: get_resolve(), get_project(), get_timeline()
-|   |   |
-|   |   +-- moondream.py           # Moondream API client, image prep (PNG->JPEG)
-|   |                              # Exports: caption(), detect(), query(), point()
-|   |
-|   +-- tools/                     # Each file exports register(mcp: FastMCP)
-|       +-- connection.py          # resolve_get_status, resolve_open_page, ...
-|       +-- project.py             # resolve_list_projects, resolve_load_project, ...
-|       +-- timeline.py            # resolve_list_timelines, resolve_get_playhead, ...
-|       +-- media.py               # resolve_import_media, resolve_append_to_timeline, ...
-|       +-- editing.py             # resolve_set_clip_transform, resolve_replace_clip, resolve_delete_clip, ...
-|       +-- color.py               # resolve_apply_lut, resolve_create_color_version, ...
-|       +-- markers.py             # resolve_add_marker, resolve_get_markers, ...
-|       +-- titles.py              # resolve_insert_title, resolve_modify_title_text
-|       +-- render.py              # resolve_quick_export, resolve_start_render, ...
-|       +-- fusion.py              # resolve_get_fusion_comps, ...
-|       +-- vision.py              # resolve_describe_frame, resolve_detect_in_frame, ...
-|
-+-- .venv/                         # Python 3.14 virtualenv (Homebrew)
-+-- .env                           # MOONDREAM_API_KEY (not committed)
-+-- .env.example                   # Template for .env
-+-- start.sh                       # Launcher for Claude Desktop (sets env vars)
-+-- requirements.txt               # mcp[cli], httpx, Pillow
-+-- CLAUDE.md                      # Instructions for Claude when using this server
-+-- README.md                      # Human documentation
-+-- ARCHITECTURE.md                # This file
-```
+Replacement preflights media, ranges and track state, then duplicates the entire
+timeline before unlink/delete/append. On failure it selects that full recovery
+copy. It never claims the original timeline object has been atomically rolled back.
+Reports include original frame/source/property information and the recovery name.
+Backup timelines are deliberately retained until the operator reviews them.
 
-## Ports & Services
+## Security boundary
 
-| Service              | Port | Protocol         | URL                           |
-|----------------------|------|------------------|-------------------------------|
-| Resolve MCP (HTTP)   | 3001 | streamable-http  | http://localhost:3001/mcp     |
-| Resolve MCP (stdio)  | —    | JSON-RPC stdio   | via start.sh                  |
-| ATEM MCP             | 3000 | streamable-http  | http://localhost:3000         |
-| Cloudflare Metrics   | 20241| HTTP             | http://localhost:20241/metrics|
-| Moondream API        | 443  | HTTPS            | api.moondream.ai/v1          |
+stdio relies on local OS access. HTTP uses loopback by default and validates
+Host/Origin. External binding and public origins require a configured token.
+Bearer authentication protects all HTTP methods. TLS, per-user identity,
+revocation, rate limiting and OAuth belong at a gateway.
 
-## Tunnel Hostnames
+Tokens confer full editing authority; this is not multi-tenant isolation.
+There is no arbitrary-code tool. Media import/export can access workstation files.
+Only explicitly invoked vision tools send image data to Moondream.
 
-| Hostname                  | Routes To        | Service          |
-|---------------------------|------------------|------------------|
-| atem.cochran.cloud        | localhost:3000   | ATEM MCP Server  |
-| bmatem.cochran.cloud      | localhost:3000   | ATEM MCP Server  |
-| resolve.cochran.cloud     | localhost:3001   | Resolve MCP Server|
+## Technical debt addressed
+
+Hard-coded Mac launch paths, stdout redirection, undeclared dotenv dependency,
+unchecked transforms, incorrect playhead markers, ambiguous replacement lookup,
+inclusive-out off-by-one, lost clips after insertion failure, shared frame filenames,
+and permissive external HTTP defaults.
+
+Remaining acceptance work and native API constraints are recorded in
+[VALIDATION.md](docs/VALIDATION.md) and [INTEGRATION_TESTS.md](docs/INTEGRATION_TESTS.md).

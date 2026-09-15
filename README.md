@@ -1,230 +1,259 @@
-# DaVinci Resolve MCP Server
+# Resolve MCP Server
 
-**Resolve 21 / Windows development update:** see [WINDOWS.md](WINDOWS.md) for setup,
-new analysis tools and resources, and current validation limitations.
+**Talk to your timeline.**
 
-**Talk to your timeline.** Control DaVinci Resolve with natural language through Claude — browse projects, swap clips, color grade, render for YouTube, and see what's in any frame with AI vision. From your desk or from your phone, anywhere in the world.
+AI-native remote editing and automation for DaVinci Resolve 21. Keep the editorial
+workflows—precise B-roll replacement, clip transforms, frame understanding and
+remote operation—and add native Resolve AI, inspectable state, and safer edits.
 
-```
-You:    "Replace the b-roll at 13:22 with the South Pole takeoff shot"
-Claude: Done. Replaced AOA_CLIP_04 with A663C012_SOUTH_POLE_TAKE_OFF on V2.
-        Same position, same duration, video only — your interview audio is untouched.
-```
+**2.0 development release:** automated tests and protocol checks are available.
+Live acceptance testing on Resolve Studio is still required before production use.
+See [validation and limitations](docs/VALIDATION.md).
 
----
+## What you can ask
 
-## What This Is
+- “What's in this timeline?” — read project, tracks, clips and markers.
+- “Find the interview at 13:22.” — search at 802 elapsed seconds.
+- “Replace the second clip on V2 with TAKEOFF_03, video only.”
+- “What's in the current frame?” — Moondream caption or visual Q&A.
+- “Find shots containing an airplane.” — sample visible timeline frames with Moondream.
+- “Transcribe every interview in this bin.” — Resolve-native transcription.
+- “Add chapter markers based on these transcript timestamps.” — supply chapter boundaries.
+- “Create a rough cut from these takes in this order.”
+- “Render this timeline for YouTube.” — local Quick Export, uploading disabled.
+- “Tell me what is currently rendering.” — read render jobs and progress.
 
-An [MCP server](https://modelcontextprotocol.io) that connects Claude to a running DaVinci Resolve instance. **53 tools** across 11 categories give Claude full read/write access to your projects, timelines, media pool, color page, and render queue — plus AI-powered frame analysis via [Moondream](https://moondream.ai).
+The assistant still supplies editorial judgment. The server does not automatically
+extract a speaker-timestamp transcript or query Resolve's IntelliSearch index.
 
-This isn't a toy. It edits. It replaced a clip on a multi-track documentary timeline, matched the duration, preserved the audio, and exported the result for YouTube. All through conversation.
+## Requirements
 
-## What You Can Do
+- DaVinci Resolve **Studio 21** on the same workstation, running with
+  **Preferences > System > General > External scripting using > Local**.
+- A compatible **64-bit Python 3.10+** installation. Python and native Resolve
+  scripting-library compatibility must be checked on your machine.
+- An MCP client supporting stdio or Streamable HTTP.
+- Optional Moondream API key, only for cloud vision tools.
+- Required native AI packages installed through Resolve's Extras Download Manager.
 
-### Edit by talking
-```
-"Open the tutorial project"
-"Switch to the Full Documentary timeline"
-"What clips are on V2?"
-"Replace clip 2 on V2 with the milky way shot"
-"Zoom in to 120% on the interview clip"
-"Add a blue marker here that says 'Great take'"
-"Export this for YouTube"
-```
+Blackmagic's API documentation describes a Free/Studio superset, but some functions
+fail without Studio or required Extras. This project's external automation target
+is Studio; it does not promise full functionality on the free edition.
 
-### See through your timeline with AI vision
-```
-"What's in this frame?"
-→ A wide shot of a beach in St. Maarten with an airplane on final approach,
-  turquoise water, and spectators watching from behind a chain-link fence.
-
-"Is there a person at the podium?"
-→ Yes, there is a person standing at the podium on the left side of the frame.
-
-"How many people are visible?"
-→ 4
-```
-
-### Control Resolve from your phone
-The server runs over HTTP with a Cloudflare tunnel, so you can edit from your couch, your car, or another continent. Same tools, same capabilities — just talking to Claude on your phone.
-
----
-
-## The 53 Tools
-
-| Category | Count | What they do |
-|----------|-------|-------------|
-| **Connection** | 4 | Status, page navigation, reconnect |
-| **Project** | 6 | List, load, save, create projects, read/write settings |
-| **Timeline** | 8 | List/switch timelines, playhead control, track inspection, create new |
-| **Media** | 5 | Browse media pool, import clips, create bins, append to timeline |
-| **Editing** | 7 | Transform, speed, enable/disable, compound clips, **delete clips, replace clips** |
-| **Color** | 6 | Apply LUTs, create/load color versions, export grades |
-| **Markers** | 3 | Add, list, delete timeline markers |
-| **Titles** | 2 | Insert Fusion Text+ titles, modify text content |
-| **Render** | 6 | Quick export (YouTube/Vimeo/TikTok), custom render jobs, export EDL/FCPXML |
-| **Fusion** | 3 | Access Fusion compositions and tools |
-| **Vision** | 3 | AI scene description, object detection, visual Q&A |
-
----
-
-## Quick Start
-
-### Prerequisites
-- **DaVinci Resolve Studio** (paid — the scripting API is not available in the free version of Resolve)
-- **Python 3.10+** (tested with 3.14)
-- A [Moondream API key](https://console.moondream.ai) (free tier available — for AI vision features). Sign up at [console.moondream.ai](https://console.moondream.ai) to get your key. Moondream charges per API call, but the free tier is generous for normal editing use.
-
-### 1. Clone and install
+## Install on macOS
 
 ```bash
 git clone https://github.com/guycochran/resolve-mcp-server.git
 cd resolve-mcp-server
+git switch resolve-21
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+python -m pip install -e .
+resolve-mcp --doctor
+resolve-mcp
 ```
 
-### 2. Configure your API key
+The branch must be published before a fresh clone can switch to it. For a downloaded
+2.0 checkout, skip that line. The current development branch is local until published.
 
-```bash
-cp .env.example .env
-# Edit .env and add your Moondream API key
+## Install on Windows (PowerShell)
+
+```powershell
+git clone https://github.com/guycochran/resolve-mcp-server.git
+cd resolve-mcp-server
+git switch resolve-21
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e .
+.\.venv\Scripts\resolve-mcp.exe --doctor
+.\.venv\Scripts\resolve-mcp.exe
 ```
 
-### 3. Add to Claude Desktop
+Activation is optional. For an existing local 2.0 checkout, start at the venv step.
+If PowerShell blocks launcher scripts, run the executable directly.
 
-Add to your Claude Desktop MCP config (`~/.claude/claude_desktop_config.json`):
+Supported launchers: `resolve-mcp`, `resolve-mcp-server`,
+`python -m resolve_mcp`, `python src/server.py`, `start.sh`, and `start.ps1`.
+The existing FastMCP implementation is retained using the maintained MCP SDK 1.x
+line (`mcp>=1.28,<2`); SDK 2.x is a separate migration.
+
+### Automatic scripting discovery
+
+| Platform | Default Modules directory |
+|---|---|
+| Windows | `%PROGRAMDATA%\Blackmagic Design\DaVinci Resolve\Support\Developer\Scripting\Modules` |
+| macOS | `/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting/Modules` |
+
+Override with `PYTHONPATH_RESOLVE` (Modules directory) or `RESOLVE_SCRIPT_API`
+(parent Scripting directory). Blackmagic's loader honors `RESOLVE_SCRIPT_LIB`
+for a nonstandard native library location. Linux's standard path is retained as
+a best effort, without claiming Linux testing.
+
+Connection health checks are cached for five seconds; failed attempts have a
+two-second cooldown. `resolve_reconnect` forces an immediate retry.
+`--doctor` separates OS process presence from scripting connectivity and reports
+the version/edition when the API is available.
+
+## MCP client configuration
+
+For a client using an `mcpServers` JSON configuration, use an absolute interpreter
+path and module arguments. Windows example:
 
 ```json
 {
   "mcpServers": {
     "resolve": {
-      "command": "/path/to/resolve-mcp-server/start.sh"
+      "command": "C:/path/to/resolve-mcp-server/.venv/Scripts/python.exe",
+      "args": ["-m", "resolve_mcp"],
+      "env": {"TRANSPORT": "stdio"}
     }
   }
 }
 ```
 
-### 4. Open Resolve and start talking
+On macOS use `/absolute/path/to/resolve-mcp-server/.venv/bin/python`.
+No working-directory assumption is needed after installation.
 
-> "What project am I working on?"
+Copy `.env.example` to `.env` in a source checkout for local configuration.
+Environment variables take precedence. Installed-wheel deployments can set
+`RESOLVE_MCP_ENV_FILE` to an explicit private file path. Do not commit credentials.
 
-That's it. Claude can now see and control everything in Resolve.
+## Remote operation: authenticated Streamable HTTP
 
----
+```text
+Remote MCP client → HTTPS access gateway → localhost:3001/mcp → Resolve
+Local MCP client  → stdio                                  → Resolve
+```
 
-## Remote Access (HTTP Mode)
+Set `TRANSPORT=http`, `MCP_AUTH_TOKEN` and optionally `PORT`.
+The server defaults to `HOST=127.0.0.1`. Generate a random token, for example with
+`python -c "import secrets; print(secrets.token_urlsafe(32))"`, and save it in your
+private environment configuration. A token requires at least 32 characters.
 
-Control Resolve from anywhere — your phone, a tablet, another computer.
+Clients send `Authorization: Bearer <token>` on every HTTP request.
+External binding requires a token; setting `MCP_PUBLIC_URL` also requires one.
+Use `MCP_PUBLIC_URL=https://resolve.example.com` to allow your exact gateway host
+and origin. Invalid host/origin requests remain blocked.
+
+This is shared-token authentication for trusted operators, **not an OAuth login
+server**. Clients requiring OAuth need a compatible authentication gateway.
+A token grants access to all exposed tools and local media operations. Run one
+server process per Resolve instance, with no concurrent GUI edits during mutations.
+TLS and operator access policies belong at the gateway.
+
+### Cloudflare Tunnel
+
+Route a named tunnel hostname to `http://127.0.0.1:3001`. Set `MCP_PUBLIC_URL`
+to that HTTPS hostname, keep the backend on loopback, and retain bearer authentication.
+Apply Cloudflare Access policies appropriate for the operators/clients; an Access
+login page alone is not compatible with every MCP client. Configure service
+credentials or an OAuth-capable gateway where necessary.
+
+See [Cloudflare's published application documentation](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/).
+A tunnel supplies connectivity; configure access controls as a separate step.
+
+### Tailscale
+
+Keep the same loopback backend and bearer token. Use Tailscale Serve to proxy
+`http://127.0.0.1:3001` over your tailnet's HTTPS hostname; set `MCP_PUBLIC_URL`
+to that origin and restrict operators with tailnet policy.
+See [Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve).
+
+Do not forward the workstation's HTTP port directly onto the public internet.
+No arbitrary Python or Lua execution tool is exposed.
+
+## Two complementary kinds of AI
+
+### Resolve-native AI
+
+Transcription with optional speaker detection, transcription clearing, audio
+classification/clearing, IntelliSearch analysis/reset, Slate ID markers, motion
+deblur, speech generation, and session-wide background-task disabling.
+
+Native AI runs through Resolve. IntelliSearch and Slate ID need their Extras
+packages; speech generation needs AI Speech Generator. Face identification is
+off by default. Folder transcription/classification includes nested folders.
+Resetting IntelliSearch affects the whole project. Background-task disabling
+lasts for the Resolve session and has no API enable counterpart.
+
+### Moondream visual-language analysis
+
+Set `MOONDREAM_API_KEY` to preserve frame descriptions, object detection and visual
+Q&A. These requests send compressed frames to Moondream's cloud API.
+Images use unique temporary paths and are deleted after each request; JPEG
+compression happens in memory. Review [Moondream API documentation](https://docs.moondream.ai/api/).
+
+Visual shot search samples one midpoint frame per timeline clip, up to the requested
+limit, and restores page/playhead. It observes the visible composite, including
+upper tracks; it can miss objects outside the sample. It is not an exhaustive
+source-media search or a query into native IntelliSearch.
+
+## Read-only MCP resources
+
+Each resource returns JSON: `{success: true, data: ...}` or
+`{success: false, error: {code, message}}`. Reads never select a project/bin/timeline.
+
+| Area | Resource URIs |
+|---|---|
+| System | `resolve://system/status` |
+| Project | `resolve://project/current`, `resolve://project/list`, `resolve://project/settings`, `resolve://project/timelines` |
+| Timeline | `resolve://timeline/current`, `resolve://timeline/tracks`, `resolve://timeline/items`, `resolve://timeline/markers` |
+| Media | `resolve://mediapool/folders`, `resolve://mediapool/current-folder`, `resolve://mediapool/clips` |
+| Render | `resolve://render/jobs`, `resolve://render/formats`, `resolve://render/presets`, `resolve://render/is-rendering` |
+
+Project listing is scoped to the current database folder; media clip listing is
+scoped to the current bin. Folder paths and workflow searches can traverse all bins.
+
+## Editorial workflows and recovery
+
+All 53 original tool names remain. New workflows include
+`resolve_find_media_clip` (name/metadata),
+`resolve_find_timeline_clip` (name/position),
+`resolve_insert_broll`, `resolve_build_rough_cut`,
+`resolve_add_marker_at_playhead`, `resolve_create_chapter_markers`,
+`resolve_render_for_youtube`, and `resolve_find_shots_by_visual_description`.
+
+### Clip replacement
+
+`resolve_replace_clip` still reads record position, deletes without ripple,
+and inserts at that same record frame. Video-only is the default.
+
+- Use 1-based track/clip indices. `dry_run=true` returns the plan without mutations.
+- Media names must be unique; `new_media_id` disambiguates them.
+- Source out is **inclusive**; automatic matching uses `in + duration - 1`.
+- Source bounds, timeline position and track locks are checked before deletion.
+- Mixed source/timeline FPS is rejected rather than guessed.
+- A full recovery timeline is created before changing clips.
+- Linked peers are unlinked before deleting only the target, then linked to the
+  replacement. Interview audio is not included in the delete call.
+- An insertion, duration or relinking failure selects the recovery timeline.
+  The modified original remains for inspection; references to that timeline are
+  not automatically redirected. A recovery copy is not an atomic undo.
+- The new clip uses its own media defaults. Original effects, grades, Fusion
+  and retiming remain in the recovery copy.
+
+`media_type=2` explicitly targets an audio-track item. Combined video/audio
+replacement is rejected because a single index cannot safely identify both targets.
+This is a safety-related change from the permissive legacy parameter.
+
+B-roll insertion requires an empty destination interval. B-roll and rough-cut tools
+default to dry-run. Chapter markers take supplied timestamps; they do not infer
+speaker changes. Direct trim/move operations are deferred because the API does not
+provide a general, reliable in-place edit with full effect preservation.
+
+## Development
 
 ```bash
-# Start the server in HTTP mode
-TRANSPORT=http PORT=3001 .venv/bin/python3 src/server.py
+python -m pip install -e ".[dev]"
+python -m pytest
+python -m ruff check src tests
+python -m build
 ```
 
-### With Cloudflare Tunnel (worldwide access)
-
-```bash
-# Add to your cloudflared config:
-#   hostname: resolve.yourdomain.com
-#     service: http://localhost:3001
-
-cloudflared tunnel run
-```
-
-Now point any MCP client at `https://resolve.yourdomain.com/mcp` and you're editing remotely.
-
----
-
-## How Clip Replacement Works
-
-The Resolve scripting API has no overwrite edit or three-point edit. We built one.
-
-`resolve_replace_clip` performs a two-step operation:
-
-1. **Read** the old clip's exact timeline position and duration
-2. **Delete** the old clip (no ripple — preserves the gap)
-3. **Insert** the new clip at the identical record position with matching duration
-
-```python
-# What happens under the hood:
-timeline.DeleteClips([old_clip], False)
-pool.AppendToTimeline([{
-    "mediaPoolItem": new_item,
-    "trackIndex": 2,
-    "recordFrame": 86734,       # exact same position
-    "startFrame": 0,
-    "endFrame": 120,            # matches original duration
-    "mediaType": 1              # video only — preserves audio
-}])
-```
-
-This means Claude can swap b-roll, try alternate takes, and revert — all through conversation.
-
----
-
-## How AI Vision Works
-
-The server uses [Moondream](https://moondream.ai) Vision Language Models (VLMs) for AI-powered frame analysis. It grabs the current frame from Resolve, compresses it via Pillow (6MB PNG down to ~250KB JPEG), and sends it to the Moondream cloud API.
-
-Sign up at [console.moondream.ai](https://console.moondream.ai) (free tier available) to get your API key.
-
-Three tools:
-- **`resolve_describe_frame`** — "What's in this shot?"
-- **`resolve_detect_in_frame`** — Find objects with bounding boxes
-- **`resolve_ask_about_frame`** — Visual Q&A about the frame
-
-Use cases: automated scene logging, accessibility descriptions, content verification, shot matching.
-
----
-
-## Architecture
-
-```
-Phone/Tablet ──── HTTPS ────→ Cloudflare Tunnel ────→ localhost:3001
-                                                           │
-Claude Desktop ── stdio ──────────────────────────────────→│
-                                                           │
-                                                   Resolve MCP Server
-                                                   (Python + FastMCP)
-                                                           │
-                                              ┌────────────┼────────────┐
-                                              ▼            ▼            ▼
-                                        DaVinci       Moondream      Cloudflare
-                                        Resolve       Vision API      Tunnel
-                                        (local)       (cloud)        (cloud)
-```
-
-## Project Structure
-
-```
-src/
-├── server.py                    # FastMCP entry point (stdio + HTTP)
-├── services/
-│   ├── resolve_connection.py    # Resolve API connection management
-│   └── moondream.py             # Moondream vision API client + image prep
-└── tools/
-    ├── connection.py            # Status, page navigation
-    ├── project.py               # Project management
-    ├── timeline.py              # Timeline operations
-    ├── media.py                 # Media pool management
-    ├── editing.py               # Transform, delete, replace clips
-    ├── color.py                 # LUTs, color versions, grade export
-    ├── markers.py               # Timeline markers
-    ├── titles.py                # Fusion titles
-    ├── render.py                # Rendering & export
-    ├── fusion.py                # Fusion compositions
-    └── vision.py                # AI frame analysis
-```
-
-## Requirements
-
-- **DaVinci Resolve Studio** — The scripting API requires the paid Studio version
-- `mcp[cli]` — Model Context Protocol SDK
-- `httpx` — HTTP client for Moondream API
-- `Pillow` — Image compression (PNG → JPEG for vision pipeline)
+See [architecture](ARCHITECTURE.md), [manual integration tests](docs/INTEGRATION_TESTS.md),
+[validation](docs/VALIDATION.md), and the [2.0 implementation report](docs/RELEASE_2.0.md).
 
 ## License
 
-MIT
+[MIT](LICENSE). Resolve-native additions were implemented independently from
+Blackmagic's installed scripting documentation. No source was copied from the
+Digital Workflow Company reference implementation.
