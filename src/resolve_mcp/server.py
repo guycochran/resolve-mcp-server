@@ -48,7 +48,8 @@ def create_server(config: Config | None = None) -> ResolveMCP:
     hosts = ["localhost:*", "127.0.0.1:*", "[::1]:*"]
     origins = ["http://localhost:*", "http://127.0.0.1:*", "http://[::1]:*"]
     if config.host not in ("0.0.0.0", "::", "localhost", "127.0.0.1", "::1"):
-        hosts.append(f"{config.host}:{config.port}")
+        bind_host = f"[{config.host}]" if ":" in config.host else config.host
+        hosts.append(f"{bind_host}:{config.port}")
     if config.public_url:
         hosts.append(urlsplit(config.public_url).netloc)
         origins.append(config.public_url)
@@ -71,8 +72,12 @@ def http_app(instance, config):
 
 
 # Only a repository-local .env, or an explicitly selected file, is loaded.
-_default_env = Path(__file__).resolve().parents[2] / ".env"
-load_dotenv(os.environ.get("RESOLVE_MCP_ENV_FILE", str(_default_env)), override=False)
+_repo_root = Path(__file__).resolve().parents[2]
+_explicit_env = os.environ.get("RESOLVE_MCP_ENV_FILE")
+if _explicit_env:
+    load_dotenv(_explicit_env, override=False)
+elif Path(__file__).resolve().parents[1].name == "src" and (_repo_root / "pyproject.toml").is_file():
+    load_dotenv(_repo_root / ".env", override=False)
 mcp = create_server(Config())
 
 

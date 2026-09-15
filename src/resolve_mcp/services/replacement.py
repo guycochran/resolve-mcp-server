@@ -30,7 +30,7 @@ def source_range(media, timeline, start: int, duration: int, end: int = 0):
 def backup_timeline(project, timeline):
     name = f"{timeline.GetName()} - MCP recovery {uuid.uuid4().hex[:8]}"
     backup = timeline.DuplicateTimeline(name)
-    if backup is None:
+    if not backup:
         raise RuntimeError("Recovery timeline creation failed; no clips were changed.")
     if not project.SetCurrentTimeline(timeline):
         raise RuntimeError(f"Could not reselect original timeline. Recovery copy: {name}. No clips were changed.")

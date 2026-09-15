@@ -48,3 +48,16 @@ def test_frame_cleanup_after_api_failure(monkeypatch, tmp_path):
     except RuntimeError:
         pass
     assert not path.exists()
+
+
+def test_frame_cleanup_if_timeline_disappears(monkeypatch, tmp_path):
+    path = tmp_path / "frame.png"
+    path.write_bytes(b"fake")
+    monkeypatch.setattr(vision.moondream, "is_available", lambda: True)
+    monkeypatch.setattr(vision, "_grab_current_frame", lambda: str(path))
+    monkeypatch.setattr(vision, "get_timeline", Mock(side_effect=RuntimeError("timeline closed")))
+    try:
+        asyncio.run(vision.analyze_current(AsyncMock(), "test"))
+    except RuntimeError:
+        pass
+    assert not path.exists()

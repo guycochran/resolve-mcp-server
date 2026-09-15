@@ -35,8 +35,8 @@ async def analyze_current(operation, argument):
     if not moondream.is_available():
         raise RuntimeError("Set MOONDREAM_API_KEY before requesting cloud frame analysis.")
     path = _grab_current_frame()
-    timecode = get_timeline().GetCurrentTimecode()
     try:
+        timecode = get_timeline().GetCurrentTimecode()
         result = await operation(path, argument)
         return timecode, result
     finally:

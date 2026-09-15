@@ -1,0 +1,5 @@
+include LICENSE README.md ARCHITECTURE.md CLAUDE.md WINDOWS.md
+include start.sh start.ps1 requirements.txt .env.example
+include src/server.py
+include tests/legacy_tools.json
+recursive-include docs *.md
