@@ -4,13 +4,31 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "resolve-mcp-server"
-version = "1.1.0"
-description = "AI editing tools and read-only resources for DaVinci Resolve"
+version = "2.0.0"
+description = "AI-native remote editing and automation for DaVinci Resolve 21"
+readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["mcp[cli]>=1.0.0,<2", "httpx>=0.27.0", "Pillow>=10.0.0", "python-dotenv>=1.0.0"]
+license = {text = "MIT"}
+dependencies = ["mcp>=1.28,<2", "httpx>=0.27,<1", "Pillow>=10", "python-dotenv>=1"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.9", "build>=1", "wheel"]
 
 [project.scripts]
-resolve-mcp-server = "src.server:main"
+resolve-mcp = "resolve_mcp.server:main"
+resolve-mcp-server = "resolve_mcp.server:main"
 
 [tool.setuptools.packages.find]
-include = ["src", "src.*"]
+where = ["src"]
+include = ["resolve_mcp*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 110
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
