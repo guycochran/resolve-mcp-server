@@ -103,6 +103,7 @@ def test_transcription_false_is_marked_retryable(monkeypatch, registry):
     from resolve_mcp.tools import analysis
     resolve, pool, folder, clip = Mock(), Mock(), Mock(), Mock()
     resolve.GetVersion.return_value = [21, 1]
+    resolve.GetProductName.return_value = "DaVinci Resolve Studio"
     clip.GetName.return_value = "Speech"
     clip.TranscribeAudio.return_value = False
     folder.GetClipList.return_value = [clip]

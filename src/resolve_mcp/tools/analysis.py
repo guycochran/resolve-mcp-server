@@ -15,8 +15,18 @@ def require_21():
     return resolve
 
 
+def require_studio():
+    """AI calls on the free edition return False AND raise a modal dialog that makes
+    later, unrelated API calls fail until someone dismisses it. Refuse up front."""
+    resolve = require_21()
+    if "studio" not in str(resolve.GetProductName() or "").lower():
+        raise RuntimeError("This feature needs DaVinci Resolve Studio; the free edition would open a "
+                           "blocking upgrade dialog.")
+    return resolve
+
+
 def _target(clip_name="", folder_path=""):
-    require_21()
+    require_studio()
     pool = get_media_pool()
     folder = pool.GetCurrentFolder()
     if folder_path:
@@ -87,7 +97,7 @@ def register(mcp):
     @structured
     def resolve_reset_intellisearch() -> dict:
         """Clear IntelliSearch analysis for the ENTIRE current project (Resolve API scope)."""
-        require_21()
+        require_studio()
         result = invoke(get_project(), "ResetIntellisearchAnalysis")
         return {"success": bool(result), "scope": "entire current project"}
 
@@ -96,7 +106,7 @@ def register(mcp):
     def resolve_analyze_slate(clip_name: str = "", marker_color: str = "Green",
                               folder_path: str = "") -> dict:
         """Run native Slate ID analysis on a clip or folder and add slate markers. Requires AI Slate ID Extras."""
-        resolve = require_21()
+        resolve = require_studio()
         if marker_color not in COLORS:
             raise ValueError(f"marker_color must be one of {COLORS}.")
         enum = getattr(resolve, f"MARKER_{marker_color.upper()}", None)
@@ -127,7 +137,7 @@ def register(mcp):
     def resolve_generate_speech(text: str, filename: str, voice: str = "Female 1") -> dict:
         """Generate a speech clip into the media pool, leaving the timeline untouched.
         Requires AI Speech Generator Extras. Text is limited to 350 characters."""
-        require_21()
+        require_studio()
         if not text.strip() or len(text) > 350 or not filename.strip() or not voice.strip():
             raise ValueError("Provide 1–350 text characters, a filename, and a voice model.")
         if voice == "Custom Voice":
