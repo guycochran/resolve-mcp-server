@@ -379,3 +379,33 @@ def test_tighten_real_audio_two_mics(show, tmp_path):
     assert abs(built["summary"]["removed_seconds"] - 3.5) < 0.15
     tl = show.project.timelines[1]
     assert len(tl.GetItemListInTrack("audio", 2)) == 2 and len(tl.GetItemListInTrack("video", 1)) == 2
+
+
+def test_wav_without_frames_uses_duration(show):
+    # Exact shape Resolve Studio 21.0.4.5 returned for an imported WAV.
+    wav = Media("mic", path="/media/mic.wav")
+    wav.props.update({"Frames": "", "FPS": 24.0, "Duration": "00:00:50:00", "Start TC": "00:00:00:00",
+                      "End TC": "00:00:50:00", "Type": "Audio"})
+    assert variant.frame_count(wav.props) == 1200
+    show.source.tracks["audio"].append([Item(wav, 86400, 87600, name="Mic")])
+    _, tracks, skipped = variant.collect(show.source)
+    assert skipped == [] and len(tracks[-1]["pieces"]) == 1
+    wav.props.pop("Duration")
+    assert variant.frame_count(wav.props) == 1200
+    wav.props["End TC"] = ""
+    with pytest.raises(ValueError):
+        variant.frame_count(wav.props)
+
+
+def test_unreadable_mic_blocks_shared_silence(show, monkeypatch):
+    broken = Media("mic", path="/media/mic.wav")
+    broken.props.update({"Frames": "", "Duration": "", "End TC": ""})
+    show.source.tracks["audio"].append([Item(broken, 86400, 87600, name="Guest mic")])
+    monkeypatch.setattr(audio, "detect_silence", lambda *a, **k: [])
+    monkeypatch.setattr(audio, "calibrate_threshold", lambda *a, **k: {"threshold_db": -40, "method": "x"})
+    result = show.tools["resolve_detect_silence"]()
+    assert not result["success"] and "Guest mic" in result["error"]["message"]
+    assert not show.tools["resolve_tighten_silence"]()["success"]
+    assert show.tools["resolve_detect_silence"](detect_on="spine")["success"]
+    show.source.disabled.add(("audio", 2))
+    assert show.tools["resolve_detect_silence"]()["success"]

@@ -44,7 +44,14 @@ def _silences(timeline, tracks, fps, threshold_db, min_silence_seconds, audio_st
             raise ValueError('detect_on="spine" needs an audio spine track.')
         chosen = [t for t in tracks if (t["kind"], t["index"]) == ("audio", spine_index)]
     else:
-        chosen = [t for t in tracks if t["kind"] == "audio" and t["enabled"] and t["pieces"]]
+        enabled = [t for t in tracks if t["kind"] == "audio" and t["enabled"]]
+        unreadable = [p for t in enabled for p in t["problems"]]
+        if unreadable:
+            # Ignoring a mic we can't analyze would make its speech look like silence.
+            raise ValueError("Cannot analyze every enabled audio clip, so shared silence can't be trusted: "
+                             f"{'; '.join(unreadable[:5])}. Disable or fix those tracks, or use "
+                             'detect_on="spine".')
+        chosen = [t for t in enabled if t["pieces"]]
     if not chosen:
         raise ValueError("No enabled audio track with clips to analyze.")
     calibration, combined = [], None

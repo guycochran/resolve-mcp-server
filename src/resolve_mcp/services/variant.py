@@ -17,17 +17,34 @@ BATCH = 50
 KINDS = ("video", "audio")
 
 
+TC = re.compile(r"\d{2}:\d{2}:\d{2}[:;]\d{2,3}")
+
+
+def frame_count(props):
+    """Media length in frames. Audio-only files (e.g. WAV) report an empty "Frames" property on
+    Resolve 21.0.4.5 but do carry a Duration timecode, which is used as the fallback."""
+    try:
+        return int(float(props["Frames"]))
+    except (KeyError, TypeError, ValueError):
+        pass
+    fps = props.get("FPS")
+    duration = str(props.get("Duration") or "")
+    if TC.fullmatch(duration):
+        return to_frame(duration, fps)
+    start, end = str(props.get("Start TC") or ""), str(props.get("End TC") or "")
+    if TC.fullmatch(start) and TC.fullmatch(end):
+        return to_frame(end, fps) - to_frame(start, fps)
+    raise ValueError("no readable frame count or duration")
+
+
 def _source_offset(item, props, duration):
     """Source in-frame as a 0-based media frame. Some media report timecode-based frames."""
     src_in = int(item.GetSourceStartFrame())
-    try:
-        total = int(props["Frames"])
-    except (KeyError, TypeError, ValueError):
-        raise ValueError("no readable frame count") from None
+    total = frame_count(props)
     if src_in + duration <= total:
         return src_in
     tc = props.get("Start TC") or ""
-    if re.fullmatch(r"\d{2}:\d{2}:\d{2}[:;]\d{2,3}", tc):
+    if TC.fullmatch(tc):
         shifted = src_in - to_frame(tc, props.get("FPS"))
         if 0 <= shifted and shifted + duration <= total:
             return shifted
@@ -73,17 +90,18 @@ def collect(timeline, scope="all", spine_type="audio", spine_index=1):
             if scope == "spine" and not is_spine:
                 skipped += [f"{kind} {index}: {i.GetName()!r} (not the spine track)" for i in items]
                 continue
-            pieces = []
+            pieces, problems = [], []
             for item in items:
                 try:
                     pieces.append(_describe(item, kind, index, fps))
                 except ValueError as exc:
                     if is_spine:
                         raise ValueError(f"Spine clip {item.GetName()!r}: {exc}.") from None
-                    skipped.append(f"{kind} {index}: {item.GetName()!r} ({exc})")
+                    problems.append(f"{kind} {index}: {item.GetName()!r} ({exc})")
+            skipped += problems
             if is_spine and not pieces:
                 raise ValueError(f"{kind} track {index} is empty.")
-            tracks.append({"kind": kind, "index": index, "pieces": pieces,
+            tracks.append({"kind": kind, "index": index, "pieces": pieces, "problems": problems,
                            "enabled": bool(timeline.GetIsTrackEnabled(kind, index)),
                            "locked": bool(timeline.GetIsTrackLocked(kind, index))})
     for index in range(1, int(timeline.GetTrackCount("subtitle") or 0) + 1):
