@@ -58,7 +58,7 @@ duplicate first, dry-run and approve, read back and compare, keep recovery timel
 ## Known limitations
 
 - Multi-mic podcasts recorded as separate files on separate tracks: only the spine media is
-  carried into a variant. Sync or compound them first, or use a single mixed recording.
+  carried into a variant. Fixed in 2.2 (multi-track variants).
 - Silence detection needs ffmpeg and read access to the source files from the machine
   running the server.
 - Caption quality and language support come from Resolve. There is no API to import an
