@@ -96,8 +96,10 @@ all original tool names and actual stdio protocol initialization.
 
 ## 9. Remaining limitations
 
-- Live native Resolve acceptance remains blocked on this workstation's bundled
-  Python/fusionscript initialization. macOS live acceptance has not been run.
+- Core live acceptance passed on Windows (Resolve Studio 21.0.4.5, see PR #1) and
+  macOS (Resolve Studio 21.1.0.17, see VALIDATION.md). Windows has not yet re-run
+  replacement and recovery against e8a3d8d; several native AI and vision checks
+  remain unexercised live.
 - Source/timeline FPS mismatch is rejected for exact replacement and B-roll insertion.
 - Recovery uses a full timeline copy. The modified original and external references
   remain; copies should be reviewed and cleaned up by the operator.

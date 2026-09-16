@@ -24,7 +24,7 @@ No existing Resolve project was edited and no paid/cloud AI operation was invoke
 | Authenticated HTTP initialization | Pass, ASGI protocol test |
 | Missing/incorrect HTTP token and untrusted Host/Origin | Rejected as expected |
 | Live Resolve native-library connection | Blocked: fusionscript initialization |
-| macOS native acceptance | Not run |
+| macOS native acceptance | Pass, 2026-09-15 at e8a3d8d (see below) |
 | Cloudflare/Tailscale deployment | Documented; not deployed |
 
 The tests emit two upstream Starlette/AnyIO deprecation warnings; they do not fail
@@ -74,3 +74,51 @@ Next live step: use a compatible standard 64-bit Python installation with Resolv
 Studio external scripting set to Local, then run [INTEGRATION_TESTS.md](INTEGRATION_TESTS.md).
 Do not certify production readiness until the Windows and macOS acceptance results
 are recorded.
+# macOS live acceptance: 2026-09-15
+
+## Environment
+
+macOS 27.0 (26A5406e), Apple silicon. DaVinci Resolve Studio **21.1.0.17**, external
+scripting Local. Homebrew CPython **3.14.2** venv, MCP SDK **1.30.0**. Branch
+`resolve-21` at **e8a3d8d**. Disposable project `MCP macOS Acceptance 20260915-184429`
+with generated 24 fps fixtures (120-frame A/V base, 168-frame replacement,
+72-frame B-roll, `say`-generated speech WAV). No professional project was opened.
+
+## Results
+
+| Check | Result |
+|---|---|
+| `pytest` (115 tests) and `ruff check src tests` on macOS | Pass |
+| `--doctor` | Connected, Studio edition, Python 3.14.2 |
+| Real stdio client: initialize, 71 tools, 16 resources | Pass |
+| `resolve_get_status` and all 16 resource reads | Pass |
+| Marker add/read/delete at timeline offset 12 | Pass |
+| Transform set/readback; out-of-range ZoomX rejected with no write | Pass |
+| Replacement dry-run: no edit, no recovery copy | Pass |
+| Video-only replacement: record 86400–86520 kept, 120 frames, A1 unchanged, relinked | Pass |
+| Recovery timeline retains original linked A/V pair | Pass |
+| Short-source and missing-media replacement rejected; clip intact | Pass |
+| B-roll into a V2 gap (exactly 24 frames); overlapping B-roll rejected | Pass |
+| `resolve_reconnect` then status | Pass |
+| Local Quick Export (H.264 Master) | Pass, 1.8 MB .mov |
+| Native transcription (clip), then clear | Pass on first attempt |
+
+## e8a3d8d repair paths, live failure injection
+
+Run in-process against live Resolve. A proxy made one native call refuse or
+mis-size its result; every other call was the real Resolve API.
+
+| Scenario | Observed |
+|---|---|
+| Replace, `DeleteClips` refused after unlink | `links_restored: true`; original V1/A1 relinked; recovery selected |
+| Replace, insert 12 frames short after deletion | `bad_insert_removed: true`, `links_restored: false`; original V1 empty, A1 intact; recovery selected |
+| `resolve_delete_clip`, deletion refused | `links_restored: true`; pair relinked; recovery selected |
+| B-roll, insert 6 frames short | `bad_insert_removed: true`; V2 empty; recovery selected |
+
+## Not run on macOS
+
+Close/reopen project and Resolve restart, authenticated HTTPS and Host/Origin
+checks (covered by automated tests only), locked-track and mixed-FPS rejections,
+rough cut, chapter/drop-frame markers, Text+/Fusion/LUT, speaker detection and
+folder transcription, audio classification, IntelliSearch, Slate ID, deblur,
+speech generation, Moondream vision, and YouTube render workflow.
