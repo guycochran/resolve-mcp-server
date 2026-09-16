@@ -168,7 +168,7 @@ spines, audio-only spines, free-edition refusal, render timeout/stop (see the ma
 ## 2.1 live acceptance (macOS)
 
 macOS 27.0 (Apple silicon), DaVinci Resolve Studio 21.1.0.17, Python 3.14.2, MCP SDK 1.30.0,
-Homebrew ffmpeg 8.0.1. Branch `podcast-editing` at 840510c plus the audio-only fix in 7ebf412.
+Homebrew ffmpeg 8.0.1. Branch `podcast-editing` at 840510c plus the audio-only fix in 7132906.
 Driven through a real stdio client (`resolve-mcp`); direct API calls were used only to read
 results back. Disposable project `MCP 2.1 MAC 20260915-224545`. Generated 24 fps / 48 kHz
 media with `say` speech, start timecode 01:00:00:00: A (35 s, gaps 10–13 s and 23–25 s),
@@ -201,7 +201,7 @@ detection off.
 
 Fix found by this run: Resolve 21.1 reports an empty `Frames` property for WAV clips, so
 every audio-only spine was rejected ("A spine clip has no readable frame count"). The
-variant engine now falls back to the `Duration` timecode (7ebf412, unit-tested).
+variant engine now falls back to the `Duration` timecode (7132906, unit-tested).
 
 Other observations:
 - The legacy `resolve_append_to_timeline(track_index=2)` put the clip at the end of V1 while
