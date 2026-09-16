@@ -69,4 +69,6 @@ duplicate first, dry-run and approve, read back and compare, keep recovery timel
 
 - Automated: see `tests/test_transcript.py`, `tests/test_cuts.py` (includes a real ffmpeg
   run on generated audio), `tests/test_jobs_prompts.py`.
-- Live: Windows, Resolve Studio 21.0.4.5: 30 of 30 checks pass. See [VALIDATION.md](VALIDATION.md), section "2.1 live acceptance".
+- Live: Windows, Resolve Studio 21.0.4.5: 30 of 30 checks pass. macOS, Resolve Studio 21.1.0.17:
+  17 of 17 pass, including 21.1 clip transcripts, multi-clip and audio-only spines and render
+  timeout/stop. See [VALIDATION.md](VALIDATION.md), sections "2.1 live acceptance".
