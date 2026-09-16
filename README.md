@@ -219,7 +219,10 @@ and inserts at that same record frame. Video-only is the default.
 
 - Use 1-based track/clip indices. `dry_run=true` returns the plan without mutations.
 - Media names must be unique; `new_media_id` disambiguates them.
-- Source out is **inclusive**; automatic matching uses `in + duration - 1`.
+- Append source ranges are **half-open**: `[in, out_exclusive)`; automatic matching uses `in + duration`.
+  The existing `source_end_frame` argument is exclusive (zero means automatic).
+  Plans return `source_out_exclusive`; original `source_in_native` / `source_out_native`
+  preserve raw TimelineItem readbacks and must not be reused as append bounds.
 - Source bounds, timeline position and track locks are checked before deletion.
 - Mixed source/timeline FPS is rejected rather than guessed.
 - A full recovery timeline is created before changing clips.

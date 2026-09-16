@@ -106,6 +106,28 @@ def test_broll_overlap_refused_without_edit(scene, monkeypatch, registry):
     scene.pool.AppendToTimeline.assert_not_called()
 
 
+def test_broll_uses_exclusive_source_end_at_media_boundary(scene, monkeypatch, registry):
+    for name, value in (("get_project", scene.project), ("get_timeline", scene.timeline),
+                        ("get_media_pool", scene.pool)):
+        monkeypatch.setattr(workflows, name, lambda v=value: v)
+    monkeypatch.setattr(workflows, "find_media", lambda *a: scene.media)
+    scene.timeline.GetItemListInTrack.return_value = []
+    scene.media.GetClipProperty.return_value = {"Frames": "192", "FPS": "24"}
+
+    def append(infos):
+        info = infos[0]
+        scene.new.GetStart.return_value = info["recordFrame"]
+        scene.new.GetEnd.return_value = info["recordFrame"] + info["endFrame"] - info["startFrame"]
+        return [scene.new]
+
+    scene.pool.AppendToTimeline.side_effect = append
+    workflows.register(registry)
+    result = registry.tools["resolve_insert_broll"]("New", 86400, 192, track_index=1, dry_run=False)
+    assert result["success"]
+    info = scene.pool.AppendToTimeline.call_args.args[0][0]
+    assert (info["startFrame"], info["endFrame"]) == (0, 192)
+
+
 def test_timeline_clip_lookup_uses_exclusive_end(scene, monkeypatch, registry):
     monkeypatch.setattr(workflows, "get_timeline", lambda: scene.timeline)
     workflows.register(registry)

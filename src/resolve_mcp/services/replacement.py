@@ -6,8 +6,13 @@ from .resolve_connection import get_project, get_timeline, get_media_pool
 from .timecode import fps_value
 
 
-def source_range(media, timeline, start: int, duration: int, end: int = 0):
-    """AppendToTimeline's source out is inclusive; timeline end is exclusive."""
+def source_range(media, timeline, start: int, duration: int, end_exclusive: int = 0):
+    """Validate AppendToTimeline's half-open source range [start, end_exclusive).
+
+    Live-verified on Resolve Studio 21.0.4.5. TimelineItem.GetSourceEndFrame()
+    is a separate native readback and must not be reused as an append bound.
+    Zero requests automatic duration matching.
+    """
     if start < 0 or duration < 1:
         raise ValueError("Source in must be nonnegative and duration positive.")
     props = media.GetClipProperty() or {}
@@ -19,12 +24,12 @@ def source_range(media, timeline, start: int, duration: int, end: int = 0):
     timeline_fps = fps_value(timeline.GetSetting("timelineFrameRate"))
     if not math.isclose(source_fps, timeline_fps, abs_tol=0.01):
         raise ValueError("Source and timeline frame rates differ. Conform media before this frame-exact operation.")
-    end = start + duration - 1 if end == 0 else end
-    if end < start or end >= frames:
-        raise ValueError(f"Source range {start}..{end} exceeds media bounds 0..{frames - 1}.")
-    if end - start + 1 != duration:
+    end_exclusive = start + duration if end_exclusive == 0 else end_exclusive
+    if end_exclusive <= start or end_exclusive > frames:
+        raise ValueError(f"Source range [{start}, {end_exclusive}) exceeds media bounds [0, {frames}).")
+    if end_exclusive - start != duration:
         raise ValueError("Source range must match the original timeline duration exactly.")
-    return start, end
+    return start, end_exclusive
 
 
 def backup_timeline(project, timeline):
@@ -52,14 +57,16 @@ def replace_clip(track_index: int, clip_index: int, new_clip_name: str,
     if before["start"] < timeline.GetStartFrame():
         raise ValueError("Invalid record position before timeline start.")
     media = find_media(new_clip_name, new_media_id)
-    source_in, source_out = source_range(media, timeline, source_start_frame, int(duration), source_end_frame)
+    source_in, source_out_exclusive = source_range(
+        media, timeline, source_start_frame, int(duration), source_end_frame)
     linked = old.GetLinkedItems() or []
-    recovery = dict(before, source_in=old.GetSourceStartFrame(), source_out=old.GetSourceEndFrame(),
+    # Preserve raw TimelineItem readbacks without assigning append-range semantics.
+    recovery = dict(before, source_in_native=old.GetSourceStartFrame(), source_out_native=old.GetSourceEndFrame(),
                     properties=old.GetProperty() or {}, markers=old.GetMarkers() or {})
     plan = {"success": True, "dry_run": dry_run, "original": recovery, "replacement": media.GetName(),
             "media_id": media.GetMediaId(), "track_type": track_type, "track_index": track_index,
             "record_start": before["start"], "duration_frames": duration,
-            "source_in": source_in, "source_out_inclusive": source_out, "ripple": False,
+            "source_in": source_in, "source_out_exclusive": source_out_exclusive, "ripple": False,
             "linked_items_preserved": [item_info(item) for item in linked]}
     if dry_run:
         return plan
@@ -75,7 +82,7 @@ def replace_clip(track_index: int, clip_index: int, new_clip_name: str,
         deleted = True
         inserted = pool.AppendToTimeline([{"mediaPoolItem": media, "trackIndex": track_index,
                                           "recordFrame": before["start"], "startFrame": source_in,
-                                          "endFrame": source_out, "mediaType": media_type}]) or []
+                                          "endFrame": source_out_exclusive, "mediaType": media_type}]) or []
         if len(inserted) != 1:
             raise RuntimeError("Resolve did not return exactly one replacement item.")
         new = inserted[0]

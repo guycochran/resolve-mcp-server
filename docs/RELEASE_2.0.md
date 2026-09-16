@@ -14,7 +14,7 @@ timeline and media browsing/import; clip replacement, transforms, speed requests
 enable/disable and compounds; color/LUTs; markers; titles; rendering/export; Fusion;
 and Moondream caption/detection/Q&A. Both stdio and Streamable HTTP remain.
 
-Safety changes are explicit: source out is inclusive, combined A/V replacement is
+Safety changes are explicit: append source out is exclusive, combined A/V replacement is
 rejected, audio-only replacement addresses an audio track, and ambiguous lookup or
 unverifiable media bounds fails before deletion. Some legacy tools still return
 text/JSON text; new workflows return structured dicts.
@@ -89,7 +89,7 @@ not assumed.
 
 See [VALIDATION.md](VALIDATION.md) for the final executed results. Tests cover
 connection lifecycle, all unavailable-state resource envelopes, track/media lookup,
-inclusive source bounds, non-ripple replacement and recovery, linked audio,
+half-open append source bounds, non-ripple replacement and recovery, linked audio,
 transform validation, markers/timecode, native AI contracts, vision cleanup,
 transport defaults, authentication, host/origin validation, request serialization,
 all original tool names and actual stdio protocol initialization.
@@ -126,7 +126,7 @@ timeline management.
 | Existing tools | 53 | All 53 names retained |
 | Native AI | No 21-specific layer | Transcription, classification, search analysis, Slate ID, deblur, speech |
 | State inspection | Tool calls | 16 read-only MCP resources |
-| Replacement | Delete then append | Preflight, inclusive bounds, backup, result verification |
+| Replacement | Delete then append | Preflight, half-open source bounds, backup, result verification |
 | Vision | Caption/detect/Q&A | Preserved; isolated files and sampled shot search |
 | HTTP | Unauthenticated external default | Loopback default, token guard, host/origin checks |
 | Install | Mac-specific launcher | Python package, CLI, Windows/macOS launchers |

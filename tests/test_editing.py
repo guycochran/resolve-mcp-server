@@ -7,13 +7,13 @@ from resolve_mcp.services import lookup
 from resolve_mcp.services.timecode import to_frame, from_frame
 
 
-def test_exact_non_ripple_replace_and_inclusive_end(scene):
+def test_exact_non_ripple_replace_and_exclusive_end(scene):
     result = rep.replace_clip(2, 1, "New")
     assert result["success"]
     scene.timeline.DeleteClips.assert_called_once_with([scene.old], False)
     clip_info = scene.pool.AppendToTimeline.call_args.args[0][0]
     assert clip_info["recordFrame"] == 86400
-    assert clip_info["endFrame"] == 119
+    assert clip_info["endFrame"] == 120
     assert clip_info["mediaType"] == 1
     assert result["recovery_timeline"] == "Recovery"
 
@@ -22,22 +22,60 @@ def test_one_frame_replacement(scene):
     scene.old.GetEnd.return_value = 86401
     scene.new.GetEnd.return_value = 86401
     assert rep.replace_clip(1, 1, "New")["success"]
-    assert scene.pool.AppendToTimeline.call_args.args[0][0]["endFrame"] == 0
+    assert scene.pool.AppendToTimeline.call_args.args[0][0]["endFrame"] == 1
 
 
 def test_dry_run_has_no_mutations(scene):
     result = rep.replace_clip(2, 1, "New", dry_run=True)
     assert result["dry_run"]
+    assert result["source_out_exclusive"] == 120
+    assert result["original"]["source_in_native"] == 10
+    assert result["original"]["source_out_native"] == 129
+    assert "source_out_inclusive" not in result
     scene.timeline.DuplicateTimeline.assert_not_called()
     scene.timeline.DeleteClips.assert_not_called()
     scene.pool.AppendToTimeline.assert_not_called()
 
 
-@pytest.mark.parametrize("start,end", [(-1, 0), (450, 0), (0, 120), (5, 1)])
+@pytest.mark.parametrize("start,end", [(-1, 0), (450, 0), (0, 119), (5, 1), (380, 501)])
 def test_invalid_bounds_do_not_delete(scene, start, end):
     with pytest.raises(ValueError):
         rep.replace_clip(2, 1, "New", start, end)
     scene.timeline.DeleteClips.assert_not_called()
+
+
+@pytest.mark.parametrize("start,duration,end_exclusive", [
+    (0, 192, 0), (0, 192, 192), (191, 1, 0), (191, 1, 192), (12, 180, 192),
+])
+def test_source_range_allows_exact_media_end(scene, start, duration, end_exclusive):
+    scene.media.GetClipProperty.return_value = {"Frames": "192", "FPS": "24"}
+    assert rep.source_range(scene.media, scene.timeline, start, duration, end_exclusive) == (start, 192)
+
+
+@pytest.mark.parametrize("start,duration,end_exclusive", [(0, 192, 191), (1, 192, 0), (192, 1, 0)])
+def test_source_range_rejects_short_range_and_media_overrun(scene, start, duration, end_exclusive):
+    scene.media.GetClipProperty.return_value = {"Frames": "192", "FPS": "24"}
+    with pytest.raises(ValueError):
+        rep.source_range(scene.media, scene.timeline, start, duration, end_exclusive)
+
+
+def test_replacement_192_frames_uses_exclusive_append_bound(scene):
+    scene.old.GetEnd.return_value = 86592
+    scene.media.GetClipProperty.return_value = {"Frames": "192", "FPS": "24"}
+
+    def append(infos):
+        info = infos[0]
+        # Model the measured native behavior, independently of the range helper.
+        scene.new.GetStart.return_value = info["recordFrame"]
+        scene.new.GetEnd.return_value = info["recordFrame"] + info["endFrame"] - info["startFrame"]
+        scene.new.GetDuration.return_value = info["endFrame"] - info["startFrame"]
+        return [scene.new]
+
+    scene.pool.AppendToTimeline.side_effect = append
+    result = rep.replace_clip(1, 1, "New")
+    assert result["success"]
+    assert result["inserted"]["duration"] == 192
+    assert result["inserted"]["end"] == 86592
 
 
 def test_fps_mismatch_rejected_before_delete(scene):

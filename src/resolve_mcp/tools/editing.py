@@ -117,7 +117,8 @@ def register(mcp):
                              dry_run: bool = False, new_media_id: str = "") -> str:
         """Replace at the original record position without ripple. Video-only preserves linked audio.
         Indices are 1-based. media_type 1 targets video; 2 targets audio. Combined replacement is rejected.
-        Source out is INCLUSIVE; zero auto-matches original duration. Source FPS must match timeline.
+        source_end_frame is EXCLUSIVE; zero auto-matches source_start_frame + original duration.
+        Source FPS must match timeline. Native source-out readbacks are reported separately.
         Validates bounds/locks/ambiguity and creates a recovery timeline before mutation.
         dry_run returns the plan without edits; new_media_id disambiguates duplicate names."""
         return json.dumps(replace_clip(track_index, clip_index, new_clip_name, source_start_frame,

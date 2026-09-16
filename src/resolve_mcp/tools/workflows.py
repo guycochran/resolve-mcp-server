@@ -96,7 +96,7 @@ def register(mcp):
         if record_frame < timeline.GetStartFrame():
             raise ValueError("record_frame is before timeline start.")
         media = find_media(clip_name, media_id)
-        start, end = source_range(media, timeline, source_start_frame, duration_frames)
+        source_in, source_out_exclusive = source_range(media, timeline, source_start_frame, duration_frames)
         for item in timeline.GetItemListInTrack("video", track_index) or []:
             if record_frame < item.GetEnd() and record_frame + duration_frames > item.GetStart():
                 raise ValueError(f"Destination overlaps {item.GetName()!r}. Use replace_clip for an occupied interval.")
@@ -106,7 +106,8 @@ def register(mcp):
             return plan
         backup = backup_timeline(project, timeline)
         try:
-            inserted = pool.AppendToTimeline([{"mediaPoolItem": media, "startFrame": start, "endFrame": end,
+            inserted = pool.AppendToTimeline([{"mediaPoolItem": media, "startFrame": source_in,
+                                              "endFrame": source_out_exclusive,
                                               "recordFrame": record_frame, "trackIndex": track_index, "mediaType": 1}]) or []
             if (len(inserted) != 1 or inserted[0].GetStart() != record_frame
                     or inserted[0].GetEnd() != record_frame + duration_frames):
