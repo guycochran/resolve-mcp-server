@@ -23,7 +23,7 @@ No existing Resolve project was edited and no paid/cloud AI operation was invoke
 | Real stdio process initialization, tools/resources listing and resource read | Pass |
 | Authenticated HTTP initialization | Pass, ASGI protocol test |
 | Missing/incorrect HTTP token and untrusted Host/Origin | Rejected as expected |
-| Live Resolve native-library connection | Blocked: fusionscript initialization |
+| Live Resolve native-library connection | Pass after 225abbc (Windows runtime discovery) |
 | macOS native acceptance | Pass, 2026-09-15 at e8a3d8d (see below) |
 | Cloudflare/Tailscale deployment | Documented; not deployed |
 
@@ -131,4 +131,36 @@ The full macOS live suite above was re-run on the same machine with them applied
 17 of 17 checks pass (project `MCP macOS Acceptance 20260915-190338`), including the
 four repair scenarios, now also checking `original_timeline_may_be_modified`.
 Rejected replacements now return `invalid_request` results rather than tool errors.
-Windows has not been re-run on these changes.
+Windows re-run at b86ca8f: 26 of 26 replacement/recovery checks pass (see PR #1).
+
+## 2.1 live acceptance (Windows)
+
+Windows, DaVinci Resolve Studio 21.0.4.5, Python 3.12.14, MCP SDK 1.30.0, ffmpeg from
+Shutter Encoder. Commit f8730eb, driven through a real stdio client. Disposable project
+`MCP ACCEPTANCE 2026-09-15`; source timeline `MCP 2.1 Podcast 222800` built from a generated
+35 s, 24 fps clip (start timecode 01:00:00:00, speech with silent gaps at 10–13 s and
+23–25 s). Unit tests on Windows: 156 passed, 1 skipped (the real-ffmpeg unit test; ffmpeg is
+not on PATH there). **30 of 30 live checks pass.**
+
+| Check | Result |
+|---|---|
+| Inventory | 77 tools, 5 prompts |
+| Captions dry-run | No subtitle track created |
+| `resolve_create_captions` (English) | Native true; subtitle track 1 with 11 cues read back; clips unchanged |
+| `resolve_get_transcript` | 11 entries, 66 words, cue times within the timeline; SRT written to a new file |
+| `resolve_detect_silence` (calibrated) | Threshold -49.5 dB (floor -74.7, speech -11.6); silences 10.000–13.083 s and 23.000–25.083 s |
+| `resolve_tighten_silence` dry-run | No timeline created, source unchanged; 100 of 840 frames to remove |
+| `resolve_tighten_silence` | 3 pieces on V1 and A1: 86400–86646, 86646–86896, 86896–87140 (740 frames, gapless, identical on both tracks); video linked to audio; start TC 01:00:00:00 matched; second piece source in = 308 (gap end 314 minus 6-frame pause); source timeline unchanged |
+| `resolve_build_cut_variant` (first caption cue) | 126 frames removed (the cue length); 2 gapless pieces; source unchanged |
+| Render of the tightened variant + `resolve_wait_for_render` | Complete in 4 s; output file present; ffprobe 30.848 s vs 30.83 s planned |
+| Project save | Pass |
+
+This re-confirms AppendToTimeline's exclusive `endFrame` on 21.0.4.5, contrary to the
+comment in Blackmagic's `Examples/7_add_subclips_to_timeline.py` ("endFrame 23" described
+as the first 24 frames).
+
+After the run, `not_carried_over` was changed to summarize caption cues per subtitle track
+instead of listing each cue (unit-tested; no live behaviour change otherwise).
+
+Not live-tested for 2.1: 21.1 `GetTranscription` clip transcripts (unit-tested only),
+multi-clip spines, audio-only spines, free-edition refusal, render timeout/stop.

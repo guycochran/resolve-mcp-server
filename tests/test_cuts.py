@@ -221,6 +221,9 @@ def test_other_media_reported(show):
     show.source.tracks["video"].append([broll])
     result = show.tools["resolve_build_cut_variant"]([{"start_seconds": 1, "end_seconds": 2}])
     assert result["not_carried_over"] == ["video 2: 'Drone'"]
+    show.source.tracks["subtitle"].append([Item(None, 86400, 86448, name="Hi"), Item(None, 86448, 86496, name="there")])
+    result = show.tools["resolve_build_cut_variant"]([{"start_seconds": 1, "end_seconds": 2}])
+    assert result["not_carried_over"][-1].startswith("subtitle 1: 2 caption cues")
 
 
 def test_ffmpeg_missing_is_clear(show, monkeypatch):

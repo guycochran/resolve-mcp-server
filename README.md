@@ -6,8 +6,9 @@ AI-native remote editing and automation for DaVinci Resolve 21. Keep the editori
 workflows—precise B-roll replacement, clip transforms, frame understanding and
 remote operation—and add native Resolve AI, inspectable state, and safer edits.
 
-**2.0 development release:** automated tests and protocol checks are available.
-Live acceptance testing on Resolve Studio is still required before production use.
+**2.1 development release:** the 2.0 editing workflows are live-tested on Windows (Resolve Studio
+21.0.4.5) and macOS (21.1); the 2.1 transcript and tightening workflows on Windows only.
+Some features are still unit-tested only.
 See [validation and limitations](docs/VALIDATION.md).
 
 ## What you can ask

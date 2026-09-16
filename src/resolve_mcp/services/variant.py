@@ -117,12 +117,16 @@ def uncovered_items(timeline, pieces):
     """Items on other tracks that the variant will NOT contain (not the spine media)."""
     ids = {p["media"].GetMediaId() for p in pieces}
     warnings = []
-    for kind in ("video", "audio", "subtitle"):
+    for kind in ("video", "audio"):
         for index in range(1, int(timeline.GetTrackCount(kind) or 0) + 1):
             for item in timeline.GetItemListInTrack(kind, index) or []:
-                media = item.GetMediaPoolItem() if kind != "subtitle" else None
+                media = item.GetMediaPoolItem()
                 if media is None or media.GetMediaId() not in ids:
                     warnings.append(f"{kind} {index}: {item.GetName()!r}")
+    for index in range(1, int(timeline.GetTrackCount("subtitle") or 0) + 1):
+        cues = len(timeline.GetItemListInTrack("subtitle", index) or [])
+        if cues:
+            warnings.append(f"subtitle {index}: {cues} caption cues (re-run resolve_create_captions on the variant)")
     return warnings
 
 
