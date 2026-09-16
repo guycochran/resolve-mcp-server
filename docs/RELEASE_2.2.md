@@ -12,11 +12,15 @@ timelines. Tool names are unchanged (77 tools, 5 prompts); behaviour and new opt
   where every *enabled* audio track is quiet; time with no clip on a track counts as quiet.
   2.1 analyzed only the spine track, which would have cut a guest's answer while the host's
   mic was silent. `detect_on="spine"` keeps the old behaviour.
-- **Variants start from a duplicate.** The source is duplicated, the copy is emptied (locked
-  tracks are unlocked for this and locked again afterwards), and the kept pieces are appended
-  back onto their original track numbers with explicit `mediaType`. The copy therefore keeps
-  track names, audio channel formats (mono/stereo/…), enable and lock states and timeline
-  settings. 2.1 built a fresh empty timeline with one video and one audio track.
+- **Variants start from a duplicate.** The source is duplicated, the copy is emptied, and the
+  kept pieces are appended back onto their original track numbers with explicit `mediaType`.
+  The copy therefore keeps track names, audio channel formats (mono/stereo/…), enable states
+  and timeline settings. 2.1 built a fresh empty timeline with one video and one audio track.
+- **Locked tracks are refused.** If a track with clips is locked, the build tools stop before
+  creating anything and name the tracks to unlock. Live finding on Resolve Studio 21.0.4.5:
+  unlocking a track on the duplicate also unlocked it on the source, and re-locking the source
+  did not stick once the duplicate was selected again. Read-only silence detection still works
+  on locked tracks.
 - **Links restored.** Clips that were linked in the source (for example camera video with its
   scratch audio) are relinked piece by piece. Relink failures are reported in `notes`.
 - **Markers follow the edit** (`carry_markers=true`). Timeline markers inside kept time move

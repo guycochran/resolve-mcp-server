@@ -229,7 +229,6 @@ def test_dry_run_builds_nothing(show):
 
 def test_multitrack_variant(show):
     add_mics(show)
-    show.source.locked.add(("audio", 3))
     show.source.markers = {24.0: {"color": "Blue", "name": "Intro", "note": "", "duration": 1, "customData": "c1"},
                            60.0: {"color": "Red", "name": "Cut me", "note": "", "duration": 1, "customData": ""},
                            300.0: {"color": "Green", "name": "Topic", "note": "n", "duration": 500, "customData": ""}}
@@ -243,7 +242,6 @@ def test_multitrack_variant(show):
         assert [(i.start - 86400, i.end - 86400) for i in tl.GetItemListInTrack(kind, index)] == spans, (kind, index)
     guest = [(i.start - 86400, i.end - 86400, i.src_in) for i in tl.GetItemListInTrack("audio", 3)]
     assert guest == [(0, 48, 0), (48, 192, 96), (192, 516, 276), (516, 1116, 600)]
-    assert ("audio", 3) in tl.locked, "lock restored on the variant"
     assert result["link_groups_restored"] == 3 and len(show.pool.calls) == 4
     assert all(info["mediaType"] in (1, 2) for call in show.pool.calls for info in call)
     assert tl.markers == {24.0: {"color": "Blue", "name": "Intro", "note": "", "duration": 1, "customData": "c1"},
@@ -411,36 +409,24 @@ def test_unreadable_mic_blocks_shared_silence(show, monkeypatch):
     assert show.tools["resolve_detect_silence"]()["success"]
 
 
-def test_source_lock_restored_when_resolve_shares_it(show):
-    """Resolve 21.0.4.5 cleared the SOURCE lock when the duplicate's track was unlocked."""
+def test_locked_track_is_refused_and_never_unlocked(show, monkeypatch):
+    """Resolve 21.0.4.5 shares lock changes between a timeline and its duplicate, so nothing is unlocked."""
     add_mics(show)
     show.source.locked.add(("audio", 3))
-    original_dup = Timeline.DuplicateTimeline
+    for tool, args in (("resolve_build_cut_variant", ([{"start_seconds": 1, "end_seconds": 2}],)),
+                       ("resolve_tighten_silence", ())):
+        for dry in (True, False):
+            result = show.tools[tool](*args, dry_run=dry)
+            assert not result["success"] and "Unlock these tracks first: audio 3" in result["error"]["message"]
+    monkeypatch.setattr(audio, "detect_silence", lambda *a, **k: [])
+    monkeypatch.setattr(audio, "calibrate_threshold", lambda *a, **k: {"threshold_db": -40, "method": "x"})
+    assert show.tools["resolve_detect_silence"]()["success"], "read-only detection works on locked tracks"
+    assert show.source.locked == {("audio", 3)} and len(show.project.timelines) == 1
+    assert show.snapshot(show.source) == show.base
 
-    def shared_lock_dup(self, name):
-        dup = original_dup(self, name)
-        source = self
 
-        def set_lock(kind, index, value):
-            Timeline.SetTrackLock(dup, kind, index, value)
-            if not value:  # observed: the unlock leaked to the source; the relock did not
-                source.locked.discard((kind, index))
-            return True
-        dup.SetTrackLock = set_lock
-        return dup
-
-    def source_set_lock(kind, index, value):
-        # observed: SetTrackLock only works on the current timeline
-        if show.project.current is show.source:
-            Timeline.SetTrackLock(show.source, kind, index, value)
-        return True
-    show.source.SetTrackLock = source_set_lock
-    Timeline.DuplicateTimeline = shared_lock_dup
-    try:
-        result = show.tools["resolve_build_cut_variant"]([{"start_seconds": 1, "end_seconds": 2}], dry_run=False)
-    finally:
-        Timeline.DuplicateTimeline = original_dup
-    assert result["success"], result
-    assert ("audio", 3) in show.source.locked
-    assert any("lock on audio 3" in n and "restored" in n for n in result["notes"])
-    assert show.project.current.GetName() != "Episode 12", "variant reselected after the restore"
+def test_locked_empty_track_is_fine(show):
+    show.source.tracks["audio"].append([])
+    show.source.locked.add(("audio", 2))
+    assert show.tools["resolve_build_cut_variant"]([{"start_seconds": 1, "end_seconds": 2}], dry_run=False)["success"]
+    assert show.source.locked == {("audio", 2)}

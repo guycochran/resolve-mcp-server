@@ -2,6 +2,7 @@
 
 The source timeline is only read. The variant starts as DuplicateTimeline(source), so it
 inherits track count, names, audio channel formats, enable states and timeline settings.
+Timelines with locked tracks are refused rather than unlocked (see collect).
 Every clip in the copy is then deleted and the kept pieces of each source clip are
 appended back onto the same track, closed up so the result has no gaps. Removals are
 global (all tracks at once), so multi-camera and multi-mic tracks stay in sync.
@@ -72,7 +73,7 @@ def _describe(item, kind, index, fps):
             "links": {linked.GetUniqueId() for linked in item.GetLinkedItems() or []}}
 
 
-def collect(timeline, scope="all", spine_type="audio", spine_index=1):
+def collect(timeline, scope="all", spine_type="audio", spine_index=1, allow_locked=False):
     """Clips to carry, grouped per track, plus human-readable notes for what is left out.
     The spine track must be fully carriable; other tracks skip (and list) problem clips."""
     if spine_type not in KINDS:
@@ -102,8 +103,15 @@ def collect(timeline, scope="all", spine_type="audio", spine_index=1):
             if is_spine and not pieces:
                 raise ValueError(f"{kind} track {index} is empty.")
             tracks.append({"kind": kind, "index": index, "pieces": pieces, "problems": problems,
-                           "enabled": bool(timeline.GetIsTrackEnabled(kind, index)),
-                           "locked": bool(timeline.GetIsTrackLocked(kind, index))})
+                           "enabled": bool(timeline.GetIsTrackEnabled(kind, index))})
+    locked = [f"{kind} {index}" for kind in (*KINDS, "subtitle")
+              for index in range(1, int(timeline.GetTrackCount(kind) or 0) + 1)
+              if timeline.GetIsTrackLocked(kind, index) and timeline.GetItemListInTrack(kind, index)]
+    if locked and not allow_locked:
+        # Live finding (Resolve Studio 21.0.4.5): unlocking a track on a duplicated timeline also
+        # changes the source timeline's lock, and restoring it does not stick. So nothing is unlocked.
+        raise ValueError(f"Unlock these tracks first: {', '.join(locked)}. Variants are built from a "
+                         "duplicate, and Resolve shares track-lock changes between a timeline and its copy.")
     for index in range(1, int(timeline.GetTrackCount("subtitle") or 0) + 1):
         cues = len(timeline.GetItemListInTrack("subtitle", index) or [])
         if cues:
@@ -228,17 +236,14 @@ def _existing_names(project):
 
 
 def _empty_copy(variant, notes):
-    """Delete every clip (and marker) in the duplicated timeline; unlock tracks while doing it."""
-    relock = []
+    """Delete every clip (and marker) in the duplicated timeline."""
     for kind in (*KINDS, "subtitle"):
         for index in range(1, int(variant.GetTrackCount(kind) or 0) + 1):
             items = variant.GetItemListInTrack(kind, index) or []
             if not items:
                 continue
             if variant.GetIsTrackLocked(kind, index):
-                if not variant.SetTrackLock(kind, index, False):
-                    raise RuntimeError(f"Could not unlock {kind} track {index} in the copy.")
-                relock.append((kind, index))
+                raise RuntimeError(f"{kind} track {index} is locked in the copy; nothing was unlocked.")
             if not variant.DeleteClips(list(items), False) or variant.GetItemListInTrack(kind, index):
                 if kind == "subtitle":
                     notes.append(f"subtitle {index}: old caption cues could not be removed from the variant")
@@ -246,7 +251,6 @@ def _empty_copy(variant, notes):
                 raise RuntimeError(f"Could not clear {kind} track {index} in the copy.")
     if (variant.GetMarkers() or {}) and not variant.DeleteMarkersByColor("All"):
         notes.append("old timeline markers could not be removed from the variant")
-    return relock
 
 
 def build(project, pool, timeline, planned, name, markers=True, open_variant=True):
@@ -257,9 +261,6 @@ def build(project, pool, timeline, planned, name, markers=True, open_variant=Tru
         raise ValueError("Nothing would remain; no timeline was created.")
     if name in _existing_names(project):
         raise ValueError(f"A timeline named {name!r} already exists.")
-    source_locks = {(kind, index): bool(timeline.GetIsTrackLocked(kind, index))
-                    for kind in (*KINDS, "subtitle")
-                    for index in range(1, int(timeline.GetTrackCount(kind) or 0) + 1)}
     variant = timeline.DuplicateTimeline(name)
     if not variant:
         raise RuntimeError("Resolve could not duplicate the source timeline; nothing was changed.")
@@ -267,7 +268,7 @@ def build(project, pool, timeline, planned, name, markers=True, open_variant=Tru
     try:
         if not project.SetCurrentTimeline(variant):
             raise RuntimeError("Could not select the new variant timeline.")
-        relock = _empty_copy(variant, result["notes"])
+        _empty_copy(variant, result["notes"])
         start = int(variant.GetStartFrame())
         expected = {}
         for step in appends:
@@ -330,34 +331,11 @@ def build(project, pool, timeline, planned, name, markers=True, open_variant=Tru
                 result["notes"].append(f"{len(moved) - added} markers could not be re-added")
             if source_count > len(moved):
                 result["notes"].append(f"{source_count - len(moved)} markers were inside removed time")
-        for kind, index in relock:
-            variant.SetTrackLock(kind, index, True)
         result["success"] = True
     except Exception as exc:
         result.update(success=False, error={"code": "variant_failed", "message": str(exc)},
                       note="The source timeline was not modified. The incomplete variant is kept for inspection.")
     finally:
-        # Live finding (Resolve Studio 21.0.4.5): unlocking a track on the duplicate also cleared
-        # the lock on the source timeline. Put the source's lock states back and say so.
-        # A second finding: SetTrackLock on the source did not take effect while the variant was the
-        # current timeline, so the source is selected for the restore.
-        restored, unrestored = [], []
-        changed = [(k, locked) for k, locked in source_locks.items()
-                   if bool(timeline.GetIsTrackLocked(*k)) != locked]
-        if changed:
-            project.SetCurrentTimeline(timeline)
-            for (kind, index), locked in changed:
-                timeline.SetTrackLock(kind, index, locked)
-                ok = bool(timeline.GetIsTrackLocked(kind, index)) == locked
-                (restored if ok else unrestored).append(f"{kind} {index}")
-            if open_variant and result.get("success"):
-                project.SetCurrentTimeline(variant)
-        if restored:
-            result["notes"].append(f"Resolve changed the source timeline's lock on {', '.join(restored)}; "
-                                   "it was restored")
-        if unrestored:
-            result["source_lock_changed"] = unrestored
-            result["notes"].append(f"Source timeline lock state could not be restored on {', '.join(unrestored)}")
         if not open_variant or not result.get("success"):
             result["source_reselected"] = bool(project.SetCurrentTimeline(timeline))
     return result

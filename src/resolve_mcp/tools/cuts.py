@@ -94,7 +94,8 @@ def register(mcp):
         multi-mic podcasts); "spine" analyzes just the spine track. threshold_db 0 = calibrate per clip.
         Returns timeline-relative seconds (the same scale as resolve_get_transcript captions)."""
         timeline = get_timeline()
-        fps, carried, _ = variant.collect(timeline, tracks, spine_track_type, spine_track_index)
+        fps, carried, _ = variant.collect(timeline, tracks, spine_track_type, spine_track_index,
+                                          allow_locked=True)
         ranges, calibration, analyzed = _silences(timeline, carried, fps, threshold_db, min_silence_seconds,
                                                   audio_stream, detect_on, spine_track_type, spine_track_index)
         origin = int(timeline.GetStartFrame())

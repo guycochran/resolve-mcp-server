@@ -264,7 +264,9 @@ These tools never modify the timeline you are working on.
 
 How variants work: the source timeline is duplicated, the copy is emptied, and the kept
 piece of every clip is appended back onto the same track, closed up with no gaps. The copy
-keeps track names, mono/stereo formats, enable and lock states and timeline settings. Cuts
+keeps track names, mono/stereo formats, enable states and timeline settings. Timelines with
+locked tracks are refused (unlock them first): Resolve shares lock changes between a timeline
+and its copy, so the tool never unlocks anything. Cuts
 apply to all tracks at once, so cameras and separate mic tracks stay in sync, linked clips are
 relinked, and timeline markers in kept time move with the edit. Each track is read back and
 checked against the plan.
