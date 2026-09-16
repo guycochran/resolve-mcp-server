@@ -4,12 +4,15 @@
 
 AI-native remote editing and automation for DaVinci Resolve 21. Keep the editorial
 workflows—precise B-roll replacement, clip transforms, frame understanding and
-remote operation—and add native Resolve AI, inspectable state, and safer edits.
+remote operation—and add native Resolve AI, inspectable state, safer edits, captions,
+transcripts, silence tightening, and multi-track podcast/interview workflows.
 
-**2.1 development release:** the 2.0 editing workflows are live-tested on Windows (Resolve Studio
-21.0.4.5) and macOS (21.1); the 2.1 transcript and tightening workflows on Windows only.
-Some features are still unit-tested only.
-See [validation and limitations](docs/VALIDATION.md).
+**Current release: 2.2.0.** The 2.0 editing workflows and 2.2 multi-track variant workflows
+have been live-tested on both Windows and macOS. Some less common Resolve-native AI and
+legacy operations remain unit-tested or partially exercised only. See
+[validation and limitations](docs/VALIDATION.md).
+
+Current inventory: **77 tools, 16 read-only MCP resources, and 5 workflow prompts.**
 
 ## What you can ask
 
@@ -22,6 +25,7 @@ See [validation and limitations](docs/VALIDATION.md).
 - “Caption this episode and give me an SRT.” — Resolve's speech recognition, read back as text.
 - “Cut the dead air out of this podcast.” — builds a tightened copy; the original is untouched.
 - “Remove the ums and the tangent about parking.” — text-based cuts into a new timeline.
+- “Keep all cameras and microphones in sync while tightening this interview.” — cuts every carried track together.
 - “Add chapter markers based on these transcript timestamps.” — supply chapter boundaries.
 - “Create a rough cut from these takes in this order.”
 - “Render this timeline for YouTube.” — local Quick Export, uploading disabled.
@@ -29,7 +33,7 @@ See [validation and limitations](docs/VALIDATION.md).
 
 The assistant still supplies editorial judgment. It cannot query Resolve's
 IntelliSearch index. Word-level, speaker-labelled clip transcripts need Resolve 21.1+;
-timeline captions work on every Resolve 21 Studio build.
+timeline captions work on supported Resolve 21 Studio builds.
 
 ## Requirements
 
@@ -51,7 +55,6 @@ is Studio; it does not promise full functionality on the free edition.
 ```bash
 git clone https://github.com/guycochran/resolve-mcp-server.git
 cd resolve-mcp-server
-git switch resolve-21
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e .
@@ -59,23 +62,18 @@ resolve-mcp --doctor
 resolve-mcp
 ```
 
-The branch must be published before a fresh clone can switch to it. For a downloaded
-2.0 checkout, skip that line. The current development branch is local until published.
-
 ## Install on Windows (PowerShell)
 
 ```powershell
 git clone https://github.com/guycochran/resolve-mcp-server.git
 cd resolve-mcp-server
-git switch resolve-21
 py -3 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e .
 .\.venv\Scripts\resolve-mcp.exe --doctor
 .\.venv\Scripts\resolve-mcp.exe
 ```
 
-Activation is optional. For an existing local 2.0 checkout, start at the venv step.
-If PowerShell blocks launcher scripts, run the executable directly.
+Activation is optional. If PowerShell blocks launcher scripts, run the executable directly.
 
 Supported launchers: `resolve-mcp`, `resolve-mcp-server`,
 `python -m resolve_mcp`, `python src/server.py`, `start.sh`, and `start.ps1`.
@@ -211,12 +209,10 @@ scoped to the current bin. Folder paths and workflow searches can traverse all b
 
 ## Editorial workflows and recovery
 
-All 53 original tool names remain. New workflows include
-`resolve_find_media_clip` (name/metadata),
-`resolve_find_timeline_clip` (name/position),
-`resolve_insert_broll`, `resolve_build_rough_cut`,
-`resolve_add_marker_at_playhead`, `resolve_create_chapter_markers`,
-`resolve_render_for_youtube`, and `resolve_find_shots_by_visual_description`.
+All 53 original tool names remain. Newer workflows include media/timeline lookup,
+`resolve_insert_broll`, `resolve_build_rough_cut`, marker/chapter helpers,
+`resolve_render_for_youtube`, visual shot search, captions/transcripts, silence analysis,
+reviewable cut variants, and render waiting.
 
 ### Clip replacement
 
@@ -249,38 +245,51 @@ default to dry-run. Chapter markers take supplied timestamps; they do not infer
 speaker changes. Direct trim/move operations are deferred because the API does not
 provide a general, reliable in-place edit with full effect preservation.
 
-## Transcripts, captions and tightening
+## Transcripts, captions and multi-track tightening
 
-These tools never modify the timeline you are working on.
+These workflows are designed to preserve the source timeline by reading it or building a new variant.
 
 | Tool | What it does |
 |---|---|
-| `resolve_create_captions` | Runs Resolve's auto-captioning on the current timeline (adds a subtitle track). Success is judged by reading the new cues back, because Resolve's own true/false is unreliable. |
-| `resolve_get_transcript` | Returns caption cues (timeline seconds and frames) or, on 21.1+, a clip's full native transcript with speakers and word times. Writes SRT, VTT or plain text to a new file. |
-| `resolve_detect_silence` | Read-only ffmpeg `silencedetect` on the dialogue track's source media. The threshold is calibrated from the recording's own noise floor unless you set one. |
-| `resolve_tighten_silence` | Removes silences into a **new timeline**, leaving a short pause on each side so words are not clipped. Dry-run by default. |
-| `resolve_build_cut_variant` | Removes any list of time ranges (for example caption cues with filler words) into a **new timeline**. Dry-run by default. |
-| `resolve_wait_for_render` | Waits for a render job or the whole queue, then reports status and the output file. |
+| `resolve_create_captions` | Runs Resolve's auto-captioning on the current timeline and verifies success by reading cues back. |
+| `resolve_get_transcript` | Returns caption cues, or on Resolve 21.1+ a clip's native transcript with speakers/word times. Can write SRT, VTT or text to a new path. |
+| `resolve_detect_silence` | Read-only ffmpeg `silencedetect`, calibrated from recording noise floor unless overridden. Can consider all carried audio tracks. |
+| `resolve_tighten_silence` | Removes shared dead air into a **new timeline**, keeping a small pause around speech. Dry-run by default. |
+| `resolve_build_cut_variant` | Removes specified time ranges across carried tracks into a **new timeline**. Dry-run by default. |
+| `resolve_wait_for_render` | Waits for a render job or queue, then reports status and output file. |
 
-How variants work: the source timeline is duplicated, the copy is emptied, and the kept
-piece of every clip is appended back onto the same track, closed up with no gaps. The copy
-keeps track names, mono/stereo formats, enable states and timeline settings. Timelines with
-locked tracks are refused (unlock them first): Resolve shares lock changes between a timeline
-and its copy, so the tool never unlocks anything. Cuts
-apply to all tracks at once, so cameras and separate mic tracks stay in sync, linked clips are
-relinked, and timeline markers in kept time move with the edit. Each track is read back and
-checked against the plan.
+In 2.2, variant editing is multi-track aware. The source timeline is duplicated, the copy is
+emptied and rebuilt from kept media ranges on their original track numbers. Cameras and separate
+microphone tracks are cut together, links are restored, timeline markers in kept time move with
+the edit, and each track is read back and verified against the plan.
 
-Silence is only cut where **every** enabled audio track is quiet, so a guest answering while
-the host is silent is never mistaken for dead air (`detect_on="spine"` analyzes one track only).
+Silence is cut only where the selected audio set is quiet. With the default carried-track mode,
+a guest answering while the host is silent is not mistaken for dead air. Track names, audio formats,
+enable states and timeline settings are carried where supported.
+
+Locked, non-empty tracks are intentionally refused rather than automatically unlocked because
+Resolve lock behavior differs across tested 21.x builds and can affect duplicate/source timelines.
 Titles, generators, compound/multicam clips, retimed clips and media at a different frame rate
-can't be re-cut exactly; they are left out and listed under `not_carried_over`. On the spine
-track (A1 by default) they are an error instead. `tracks="spine"` keeps the 2.1 behaviour of
-carrying only the spine track. If a check fails, the incomplete variant is kept for inspection
-and the source timeline is reselected.
+cannot always be rebuilt exactly; unsupported cases are rejected or reported instead of guessed.
 
-Free-edition calls to Resolve's AI features open a modal upgrade dialog that makes later
-API calls fail, so these tools refuse to run unless the product is Resolve Studio.
+Free-edition calls to Resolve's AI features can open a modal upgrade dialog that disrupts later API calls,
+so these tools refuse to run unless the product is Resolve Studio.
+
+## Live validation highlights
+
+### Windows
+
+Resolve Studio 21.0.4.5 / Python 3.12.14. The 2.2 multi-track suite passed 34/34 checks,
+including locked-track refusal, shared-silence detection across A1/A2/A3, synchronized V1/A1/A2/A3
+tightening, link restoration, marker movement, text cuts, source-timeline preservation, and render/wait.
+
+### macOS
+
+Apple silicon / macOS 27.0 / Resolve Studio 21.1.0.17 / Python 3.14.2. The 2.2 live run passed,
+including shared-silence detection, multi-track tightening, link restoration, marker mapping,
+text cuts, render/wait and project save. The macOS unit suite reported 164 tests.
+
+See `docs/VALIDATION.md` for fixtures, raw values and Resolve-version-specific findings.
 
 ## Workflow prompts
 
@@ -289,6 +298,8 @@ MCP clients that support prompts get ready-made recipes with the safety rules bu
 `safe_shot_replacement` and `youtube_delivery`.
 
 ## Development
+
+Codex and other coding agents should read [AGENTS.md](AGENTS.md) before making changes.
 
 ```bash
 python -m pip install -e ".[dev]"
