@@ -94,6 +94,18 @@ transform validation, markers/timecode, native AI contracts, vision cleanup,
 transport defaults, authentication, host/origin validation, request serialization,
 all original tool names and actual stdio protocol initialization.
 
+## 8a. Post-acceptance consistency changes
+
+- JSON-returning legacy editing, marker and title tools now return
+  `{"success": false, "error": {code, message}}` for rejected input instead of an
+  MCP tool error. Tool names and parameters are unchanged; clients should read `success`.
+  Plain-text legacy tools (for example `resolve_reconnect`) are unchanged.
+- Replacement and B-roll plans, including dry-runs, include a `recovery_policy` field.
+- B-roll failures use the same `{code, message}` error and `recovery` block as replacement.
+- `original_timeline_may_be_modified` is false when nothing on the original was changed.
+- `resolve_quick_export` always sends `EnableUpload: false` and reports a `success` field.
+- A false native transcription result is marked `retryable` with a wait-and-retry hint.
+
 ## 9. Remaining limitations
 
 - Core live acceptance passed on Windows (Resolve Studio 21.0.4.5, see PR #1) and

@@ -5,7 +5,7 @@ from pathlib import Path
 from ..services.resolve_connection import get_project, get_timeline, get_media_pool
 from ..services.lookup import walk_folders, find_media, validate_track, item_info
 from ..services.replacement import source_range, backup_timeline
-from ..services.results import structured
+from ..services.results import structured, RECOVERY_POLICY, render_succeeded
 from ..services.timecode import to_frame, fps_value, playhead_offset
 from .analysis import COLORS
 
@@ -101,7 +101,8 @@ def register(mcp):
             if record_frame < item.GetEnd() and record_frame + duration_frames > item.GetStart():
                 raise ValueError(f"Destination overlaps {item.GetName()!r}. Use replace_clip for an occupied interval.")
         plan = {"success": True, "dry_run": dry_run, "clip": media.GetName(), "record_frame": record_frame,
-                "duration_frames": duration_frames, "track_index": track_index, "media_type": "video only"}
+                "duration_frames": duration_frames, "track_index": track_index, "media_type": "video only",
+                "recovery_policy": RECOVERY_POLICY}
         if dry_run:
             return plan
         backup = backup_timeline(project, timeline)
@@ -126,8 +127,14 @@ def register(mcp):
                 selected = bool(project.SetCurrentTimeline(backup))
             except Exception:
                 selected = False
-            return dict(plan, success=False, error=str(exc), recovery_timeline=backup.GetName(),
-                        backup_selected=selected, original_repair=repair)
+            return dict(plan, success=False, error={"code": "broll_failed", "message": str(exc)},
+                        recovery_timeline=backup.GetName(), backup_selected=selected, original_repair=repair,
+                        recovery={"backup_selected": selected, "timeline": backup.GetName(),
+                                  "original_timeline": timeline.GetName(), "original_repair": repair,
+                                  "original_timeline_may_be_modified": bool(inserted)
+                                  and not repair.get("bad_insert_removed"),
+                                  "instruction": "Use the complete recovery timeline. The original timeline "
+                                                 "is retained for inspection."})
 
     @mcp.tool()
     @structured
@@ -178,8 +185,4 @@ def register(mcp):
             raise ValueError("Resolve is already rendering.")
         result = project.RenderWithQuickExport(preset, {"TargetDir": output_dir, "CustomName": filename,
                                                         "EnableUpload": False})
-        status = str(result.get("Status", "")).lower() if isinstance(result, dict) else ""
-        success = (status in ("complete", "completed", "success")) if status else None
-        if not result or isinstance(result, str) or (isinstance(result, dict) and result.get("Error")):
-            success = False
-        return {"success": success, "native_status": result, "upload_enabled": False, "preset": preset}
+        return {"success": render_succeeded(result), "native_status": result, "upload_enabled": False, "preset": preset}

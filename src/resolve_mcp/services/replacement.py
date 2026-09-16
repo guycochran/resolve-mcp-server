@@ -4,6 +4,7 @@ import uuid
 from .lookup import find_media, timeline_clip, item_info
 from .resolve_connection import get_project, get_timeline, get_media_pool
 from .timecode import fps_value
+from .results import RECOVERY_POLICY
 
 
 def source_range(media, timeline, start: int, duration: int, end_exclusive: int = 0):
@@ -67,7 +68,8 @@ def replace_clip(track_index: int, clip_index: int, new_clip_name: str,
             "media_id": media.GetMediaId(), "track_type": track_type, "track_index": track_index,
             "record_start": before["start"], "duration_frames": duration,
             "source_in": source_in, "source_out_exclusive": source_out_exclusive, "ripple": False,
-            "linked_items_preserved": [item_info(item) for item in linked]}
+            "linked_items_preserved": [item_info(item) for item in linked],
+            "recovery_policy": RECOVERY_POLICY}
     if dry_run:
         return plan
     backup = backup_timeline(project, timeline)
@@ -116,6 +118,7 @@ def replace_clip(track_index: int, clip_index: int, new_clip_name: str,
                 repair["links_restored"] = False
         elif unlinked and not insert_verified:
             repair["links_restored"] = False  # original was deleted; nothing to relink to
+        modified = bool(deleted or inserted or (unlinked and not repair.get("links_restored")))
         try:
             active_backup = bool(project.SetCurrentTimeline(backup))
         except Exception:
@@ -124,5 +127,5 @@ def replace_clip(track_index: int, clip_index: int, new_clip_name: str,
                     error={"code": "replacement_failed", "message": str(exc)},
                     recovery={"backup_selected": active_backup, "timeline": backup.GetName(),
                               "original_repair": repair,
-                              "original_timeline_may_be_modified": True,
+                              "original_timeline_may_be_modified": modified,
                               "instruction": "Use the complete recovery timeline. The original timeline is retained for inspection; references are not automatically redirected."})

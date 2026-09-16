@@ -3,6 +3,7 @@
 import json
 from mcp.server.fastmcp import FastMCP
 from ..services.resolve_connection import get_resolve, get_project, get_timeline
+from ..services.results import render_succeeded
 
 
 def register(mcp: FastMCP):
@@ -42,7 +43,7 @@ def register(mcp: FastMCP):
             filename: Custom filename (optional, uses timeline name if empty).
         """
         project = get_project()
-        params = {}
+        params = {"EnableUpload": False}  # never publish from a local export tool
         if output_dir:
             params["TargetDir"] = output_dir
         if filename:
@@ -50,7 +51,8 @@ def register(mcp: FastMCP):
 
         result = project.RenderWithQuickExport(preset, params)
         if result:
-            return json.dumps({"preset": preset, "native_status": result})
+            return json.dumps({"success": render_succeeded(result), "preset": preset,
+                               "native_status": result, "upload_enabled": False})
         return f"Failed to start Quick Export with preset '{preset}'. Check preset name with resolve_list_render_presets."
 
     @mcp.tool()

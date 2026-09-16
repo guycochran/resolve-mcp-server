@@ -2,6 +2,7 @@
 import json
 import math
 from ..services.resolve_connection import get_resolve, get_timeline
+from ..services.results import structured_json
 from .editing import _selected
 
 
@@ -17,6 +18,7 @@ def text_tool(item):
 
 def register(mcp):
     @mcp.tool()
+    @structured_json
     def resolve_insert_title(text: str, font_size: float = 0.05,
                              position_x: float = 0.5, position_y: float = 0.5) -> str:
         """Insert Text+ at playhead. Validates size/position and reports partial failures after creation."""
@@ -41,6 +43,7 @@ def register(mcp):
                                "instruction": "The inserted title remains; inspect or remove it."})
 
     @mcp.tool()
+    @structured_json
     def resolve_modify_title_text(new_text: str, track_index: int = 0, clip_index: int = 0) -> str:
         """Modify Text+ on the playhead clip or explicit 1-based video track/clip indices."""
         item = _selected(track_index, clip_index, writable=True)

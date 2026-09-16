@@ -122,3 +122,9 @@ checks (covered by automated tests only), locked-track and mixed-FPS rejections,
 rough cut, chapter/drop-frame markers, Text+/Fusion/LUT, speaker detection and
 folder transcription, audio classification, IntelliSearch, Slate ID, deblur,
 speech generation, Moondream vision, and YouTube render workflow.
+
+## Post-acceptance changes
+
+The consistency changes listed in RELEASE_2.0.md section 8a were made after the
+macOS live run. They are covered by 10 new unit tests (125 total, passing) but have
+not yet been re-run against live Resolve.

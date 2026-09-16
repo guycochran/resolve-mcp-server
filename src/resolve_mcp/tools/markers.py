@@ -2,11 +2,13 @@
 import json
 from ..services.resolve_connection import get_timeline
 from ..services.timecode import playhead_offset
+from ..services.results import structured_json
 from .analysis import COLORS
 
 
 def register(mcp):
     @mcp.tool()
+    @structured_json
     def resolve_add_marker(color: str = "Blue", name: str = "", note: str = "",
                            duration: int = 1, frame: int = 0) -> str:
         """Add timeline marker. Legacy frame=0 selects playhead; other values are timeline-relative.
@@ -19,12 +21,14 @@ def register(mcp):
         return json.dumps({"success": bool(result), "frame": frame, "name": name, "color": color, "duration": duration})
 
     @mcp.tool()
+    @structured_json
     def resolve_get_markers() -> str:
         """Read timeline markers keyed by timeline-relative frame."""
         markers = get_timeline().GetMarkers() or {}
         return json.dumps({"markers": markers, "count": len(markers)})
 
     @mcp.tool()
+    @structured_json
     def resolve_delete_markers(color: str = "", frame: int | None = None) -> str:
         """Delete markers by explicit color, All, or exact timeline-relative frame (including zero).
         No arguments make no changes. Returns the removed marker records for restoration."""

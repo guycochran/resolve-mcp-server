@@ -37,9 +37,14 @@ def _target(clip_name="", folder_path=""):
 def _run(method, clip_name="", folder_path="", *args):
     target = _target(clip_name, folder_path)
     result = invoke(target, method, *args)
-    return {"success": bool(result), "target": target.GetName(), "operation": method,
-            "scope": "clip" if clip_name else "folder (native API may include nested folders)",
-            "detail": None if result else "Resolve returned failure. Check Studio features, media, and required Extras."}
+    response = {"success": bool(result), "target": target.GetName(), "operation": method,
+                "scope": "clip" if clip_name else "folder (native API may include nested folders)",
+                "detail": None if result else "Resolve returned failure. Check Studio features, media, and required Extras."}
+    if not result and method == "TranscribeAudio":
+        # Live-observed: the first call right after import can return false, then succeed.
+        response["retryable"] = True
+        response["hint"] = "Newly imported media may still be processing. Wait a few seconds and retry once."
+    return response
 
 
 def register(mcp):

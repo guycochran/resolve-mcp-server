@@ -5,6 +5,7 @@ from ..services.resolve_connection import get_timeline, get_project
 from ..services.lookup import timeline_clip, item_info
 from ..services.replacement import replace_clip, backup_timeline
 from ..services.transforms import set_transform
+from ..services.results import structured_json
 
 
 def _get_clip_at_playhead():
@@ -34,6 +35,7 @@ def _selected(track_index, clip_index, writable=False):
 
 def register(mcp):
     @mcp.tool()
+    @structured_json
     def resolve_set_clip_transform(pan: float | None = None, tilt: float | None = None,
                                    zoom_x: float | None = None, zoom_y: float | None = None,
                                    rotation: float | None = None, opacity: float | None = None,
@@ -47,6 +49,7 @@ def register(mcp):
         return json.dumps(set_transform(_selected(track_index, clip_index, True), get_timeline(), values))
 
     @mcp.tool()
+    @structured_json
     def resolve_get_clip_transform(track_index: int = 0, clip_index: int = 0) -> str:
         """Read clip transform values at the playhead or explicit 1-based video track/clip indices."""
         item = _selected(track_index, clip_index)
@@ -55,6 +58,7 @@ def register(mcp):
         return json.dumps(dict(props, name=item.GetName()))
 
     @mcp.tool()
+    @structured_json
     def resolve_set_clip_speed(speed: float, track_index: int = 0, clip_index: int = 0) -> str:
         """Legacy speed-property request. Resolve may reject it; timeline retiming is not guaranteed by the API.
         This acts on the underlying media-pool property, potentially affecting other uses of the media."""
@@ -67,6 +71,7 @@ def register(mcp):
                            "scope": "media pool property", "detail": "Use Edit-page Retime controls if unsupported."})
 
     @mcp.tool()
+    @structured_json
     def resolve_set_clip_enabled(enabled: bool, track_index: int = 0, clip_index: int = 0) -> str:
         """Enable/disable a clip at playhead or explicit 1-based video track/clip indices."""
         item = _selected(track_index, clip_index, True)
@@ -76,6 +81,7 @@ def register(mcp):
                            "requested_enabled": enabled})
 
     @mcp.tool()
+    @structured_json
     def resolve_create_compound_clip(track_index: int = 1, start_clip: int = 1, end_clip: int = 0,
                                      name: str = "Compound Clip") -> str:
         """Create a compound clip from a 1-based video-track range. Creates a recovery timeline first."""
@@ -91,6 +97,7 @@ def register(mcp):
                            "recovery_timeline": backup.GetName()})
 
     @mcp.tool()
+    @structured_json
     def resolve_delete_clip(track_type: str = "video", track_index: int = 2, clip_index: int = 1,
                             ripple: bool = False) -> str:
         """Delete exactly one clip; defaults to non-ripple. Linked peers remain. Creates a recovery copy."""
@@ -126,6 +133,7 @@ def register(mcp):
                                "backup_selected": selected, "original_repair": repair})
 
     @mcp.tool()
+    @structured_json
     def resolve_replace_clip(track_index: int, clip_index: int, new_clip_name: str,
                              source_start_frame: int = 0, source_end_frame: int = 0, media_type: int = 1,
                              dry_run: bool = False, new_media_id: str = "") -> str:

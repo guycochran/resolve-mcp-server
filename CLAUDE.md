@@ -3,7 +3,8 @@
 - Read `resolve://system/status` or call `resolve_get_status` before work.
 - Inspect current project and timeline; use exact media IDs for ambiguous names.
 - Timeline item endpoints use absolute record frames; markers use offsets from
-  timeline start. Source out-points for replacement are inclusive.
+  timeline start. Replacement source out-points are exclusive
+  (half-open `[in, out)`); 0 auto-matches the original duration.
 - Use a dry-run before replacement or B-roll insertion when planning an edit.
 - Video-only replacement preserves linked interview audio by deleting only the
   selected video item. Combined A/V replacement is rejected.
