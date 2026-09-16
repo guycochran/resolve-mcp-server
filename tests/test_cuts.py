@@ -249,3 +249,13 @@ def test_tighten_real_audio(show, tmp_path):
     assert abs(planned["summary"]["removed_seconds"] - (4 - 0.5 + 1 - 0.5)) < 0.15
     built = show.tools["resolve_tighten_silence"](dry_run=False, new_timeline_name="tight")
     assert built["success"] and len(show.project.timelines[1].GetItemListInTrack("audio", 1)) == 3
+
+
+def test_audio_only_media_without_frame_count(show):
+    # Resolve 21.1 reports Frames="" for WAV clips; Duration still gives the length.
+    show.media.props.update({"Frames": "", "Duration": "00:00:50:00"})
+    fps, pieces = variant.spine(show.source)
+    assert pieces[0]["source_in"] == 0
+    show.media.props["Duration"] = ""
+    with pytest.raises(ValueError, match="frame count"):
+        variant.spine(show.source)

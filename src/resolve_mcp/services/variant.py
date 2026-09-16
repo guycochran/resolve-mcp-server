@@ -14,10 +14,16 @@ BATCH = 50
 
 
 def _frames(props):
+    """Media length in frames. Audio-only clips (e.g. WAV on Resolve 21.1) report an empty
+    Frames property, so fall back to the Duration timecode at the clip's frame rate."""
     try:
         return int(props["Frames"])
     except (KeyError, TypeError, ValueError):
-        raise ValueError("A spine clip has no readable frame count.") from None
+        pass
+    duration = props.get("Duration") or ""
+    if re.fullmatch(r"\d{2}:\d{2}:\d{2}[:;]\d{2,3}", duration):
+        return to_frame(duration, props.get("FPS"))
+    raise ValueError("A spine clip has no readable frame count.")
 
 
 def _source_offset(item, props, duration):
