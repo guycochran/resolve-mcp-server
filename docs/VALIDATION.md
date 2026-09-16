@@ -162,5 +162,52 @@ as the first 24 frames).
 After the run, `not_carried_over` was changed to summarize caption cues per subtitle track
 instead of listing each cue (unit-tested; no live behaviour change otherwise).
 
-Not live-tested for 2.1: 21.1 `GetTranscription` clip transcripts (unit-tested only),
-multi-clip spines, audio-only spines, free-edition refusal, render timeout/stop.
+Not live-tested on Windows for 2.1: 21.1 `GetTranscription` clip transcripts, multi-clip
+spines, audio-only spines, free-edition refusal, render timeout/stop (see the macOS section).
+
+## 2.1 live acceptance (macOS)
+
+macOS 27.0 (Apple silicon), DaVinci Resolve Studio 21.1.0.17, Python 3.14.2, MCP SDK 1.30.0,
+Homebrew ffmpeg 8.0.1. Branch `podcast-editing` at 840510c plus the audio-only fix in 7132906.
+Driven through a real stdio client (`resolve-mcp`); direct API calls were used only to read
+results back. Disposable project `MCP 2.1 MAC 20260915-224545`. Generated 24 fps / 48 kHz
+media with `say` speech, start timecode 01:00:00:00: A (35 s, gaps 10–13 s and 23–25 s),
+B (20 s, gap 8–11 s), C (audio-only WAV of A). Unit tests on macOS: 158 passed, including
+the real-ffmpeg test. **17 of 17 live checks pass** (step e after the fix below).
+
+| Check | Result |
+|---|---|
+| Inventory | 77 tools, 5 prompts; `tighten_recording` renders (1130 chars) |
+| `resolve_transcribe_audio` (A) | True on the first call |
+| `resolve_get_transcript` clip, JSON | Language `en`, 5 segments, 104 words, all with word times; 0.000–34.917 s (clip-relative) |
+| Clip transcript, text / SRT | 582 chars; SRT written to a new file (first cue 00:00:00,000 --> 00:00:10,000); an existing path is refused |
+| `resolve_create_captions` (English) | Dry-run creates nothing; then subtitle track 1 with 18 cues; clips unchanged |
+| `resolve_get_transcript` captions, JSON / SRT | 18 cues, 102 words, first cue 0.042–1.542 s (frames 86401–86437); SRT has 18 cues |
+| `resolve_detect_silence` (A then B) | Thresholds -40.4 / -40.5 dB; silences 9.958–13.000, 22.958–25.000, 42.958–46.000 s |
+| `resolve_tighten_silence` dry-run | No timeline created, source unchanged; 159 of 1320 frames to remove, 5 segments |
+| `resolve_tighten_silence` (2-clip spine) | V1 = A1 = 86400–86645, –86896, –87142, –87339, –87561 (1161 frames = kept, gapless); source-in 0, 306, 594 (A) and 0, 258 (B) match the plan; start TC matched; video linked to audio; source unchanged |
+| `resolve_tighten_silence` (audio-only WAV) | A1 only: 3 pieces, 742 frames, gapless; source-in 0, 306, 594; V1 empty; source unchanged |
+| `resolve_build_cut_variant` (2 caption cues) | 87 frames removed (sum of both cues); 4 gapless pieces, V1 = A1; source unchanged |
+| Other media on V2 + captions, tighten dry-run | `not_carried_over`: `video 2: 'mcp21_other.mov'` and one line `subtitle 1: 27 caption cues ...` |
+| Render tightened variant + `resolve_wait_for_render` | Complete in 6 s; output exists; ffprobe 48.448 s vs 48.38 s planned |
+| `resolve_wait_for_render` timeout 1 s, stop | `timed_out` true, `rendering_stopped` true; job then Cancelled; nothing rendering |
+| Project save | Pass |
+
+Raw `MediaPoolItem.GetTranscription(False)` on 21.1: a dict with `language` ("en") and
+`segments`; each segment has `start`, `end`, `text` and `words` (each word has `start`, `end`,
+`text`). Times are timecode strings on the clip's own timecode (for example `01:00:00:02`);
+the parser converts them to clip-relative seconds. No `speaker` key appeared with speaker
+detection off.
+
+Fix found by this run: Resolve 21.1 reports an empty `Frames` property for WAV clips, so
+every audio-only spine was rejected ("A spine clip has no readable frame count"). The
+variant engine now falls back to the `Duration` timecode (7132906, unit-tested).
+
+Other observations:
+- The legacy `resolve_append_to_timeline(track_index=2)` put the clip at the end of V1 while
+  reporting "Added ... to track 2". `resolve_insert_broll` placed it on V2 correctly. Not fixed here.
+- `resolve_build_cut_variant` keeps very short remnants by default (`min_keep_seconds` 0):
+  removing a cue that ends one frame before a clip ends leaves a 1-frame piece.
+- `resolve_wait_for_render` saw job status `Ready` while rendering was already in progress.
+
+Not live-tested on macOS: free-edition refusal, speaker detection output.
