@@ -126,5 +126,9 @@ speech generation, Moondream vision, and YouTube render workflow.
 ## Post-acceptance changes
 
 The consistency changes listed in RELEASE_2.0.md section 8a were made after the
-macOS live run. They are covered by 10 new unit tests (125 total, passing) but have
-not yet been re-run against live Resolve.
+first macOS live run. They are covered by 10 new unit tests (125 total, passing).
+The full macOS live suite above was re-run on the same machine with them applied:
+17 of 17 checks pass (project `MCP macOS Acceptance 20260915-190338`), including the
+four repair scenarios, now also checking `original_timeline_may_be_modified`.
+Rejected replacements now return `invalid_request` results rather than tool errors.
+Windows has not been re-run on these changes.
