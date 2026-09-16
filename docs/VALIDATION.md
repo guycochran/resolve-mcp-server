@@ -240,3 +240,46 @@ Findings that changed the code during this acceptance:
   `Duration` timecode. Before the fix, mic tracks were skipped and detection analyzed only A1.
 - Unlocking a track on a duplicated timeline also unlocked it on the source, and re-locking the
   source did not survive reselecting the duplicate. The build tools now refuse locked tracks.
+
+## 2.2 live acceptance (macOS)
+
+macOS 27.0 (Apple silicon), DaVinci Resolve Studio 21.1.0.17, Python 3.14.2, MCP SDK 1.30.0,
+Homebrew ffmpeg 8.0.1. Commit 039c7a8, real stdio client (`resolve-mcp`), disposable project
+`MCP 2.2 MAC 20260916-051232`, source timeline `MCP 2.2 TwoMic` (24 fps, 40 s): V1/A1 `cam.mp4`
+(testsrc2 + stereo host/guest mix at -6 dB, linked), A2 "Host" mono `host.wav`, A3 "Guest" mono
+`guest.wav`; markers at 120 (custom data `mcp-intro`), 288 and 480 (duration 48). Speech from
+macOS `say`: host 0–10 and 25–35 s, guest 14–24 s. Unit tests on macOS: 164.
+**All checks pass** (the source-unchanged check after one re-read, see below).
+
+| Check | Result |
+|---|---|
+| Locked A3 | Tighten refused before creating anything ("Unlock these tracks first: audio 3"); A3 still locked; also refused with Resolve on the Deliver page |
+| Shared silence (A1+A2+A3, calibrated per clip) | 9.958–14.000, 23.958–25.000, 34.958–40.000 s (thresholds -45.3, -40.8, -41.2 dB) |
+| Host-only detection (`detect_on="spine"`, A2) | 9.958–25.000 and 34.958–40.000 s |
+| Dry-runs | All mics remove 8.88 s (213 of 960 frames); host only 19.33 s; `tracks_carried` 4; `not_carried_over` empty; nothing created or changed |
+| Tighten (all tracks) | 3 pieces on V1, A1, A2, A3 at 0–245, 245–496, 496–747 (747 frames = kept), identical and gapless; `verified_tracks` 3 each; variant is current |
+| Track setup | Names (Video 1, Audio 1, Host, Guest) and formats (stereo, mono, mono) kept; no lock changed |
+| Links | Each V1 piece linked to its A1 piece only (3 groups restored); mic pieces unlinked |
+| Source mapping | Guest pieces start at source frames 0, 330, 594 = keep starts |
+| Markers | 120 kept with `mcp-intro`; 480 → 395 (duration 48); 288 dropped ("1 markers were inside removed time") |
+| Source timeline | Items, names, formats, locks and markers unchanged (read with the source selected) |
+| Text cut 16–18 s | 48 frames removed from all four tracks: 0–384, 384–912; guest source-in 0, 432 |
+| Render + wait | Complete in 4.1 s; ffprobe 31.189 s vs 31.12 s kept |
+| Project save | Pass |
+
+The keep boundaries differ from Windows by one or two frames (330 vs 332 source frames,
+marker 395 vs 394) because the generated speech differs; each result matches its own plan.
+
+Resolve 21.1 differences found during this run:
+- WAV clips again report `Frames: ""` with `Duration: 00:00:40:00`, `Start TC 00:00:00:00`;
+  the Duration fallback handled them (mic tracks were analyzed and carried).
+- `GetIsTrackEnabled` and `GetIsTrackLocked` return false for any timeline that is not the
+  current one. The first source-unchanged check read the source while the variant was current
+  and saw every track as disabled; with the source selected, all tracks read enabled and
+  unlocked, identical to the fixture. The server reads these flags only on the current timeline.
+- Lock propagation differs from 21.0.4.5: a duplicate inherits the source's lock, but unlocking
+  the duplicate did **not** unlock the source (source still locked after reselecting it).
+  Refusing locked tracks remains the right behaviour; the refusal message's reason
+  ("Resolve shares track-lock changes") describes 21.0.4.5.
+- With Resolve on the Deliver page, `SetTrackLock` returns true but changes nothing. Reading an
+  existing lock still works there, and the build tools still refuse.
