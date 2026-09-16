@@ -18,13 +18,17 @@ See [validation and limitations](docs/VALIDATION.md).
 - “What's in the current frame?” — Moondream caption or visual Q&A.
 - “Find shots containing an airplane.” — sample visible timeline frames with Moondream.
 - “Transcribe every interview in this bin.” — Resolve-native transcription.
+- “Caption this episode and give me an SRT.” — Resolve's speech recognition, read back as text.
+- “Cut the dead air out of this podcast.” — builds a tightened copy; the original is untouched.
+- “Remove the ums and the tangent about parking.” — text-based cuts into a new timeline.
 - “Add chapter markers based on these transcript timestamps.” — supply chapter boundaries.
 - “Create a rough cut from these takes in this order.”
 - “Render this timeline for YouTube.” — local Quick Export, uploading disabled.
 - “Tell me what is currently rendering.” — read render jobs and progress.
 
-The assistant still supplies editorial judgment. The server does not automatically
-extract a speaker-timestamp transcript or query Resolve's IntelliSearch index.
+The assistant still supplies editorial judgment. It cannot query Resolve's
+IntelliSearch index. Word-level, speaker-labelled clip transcripts need Resolve 21.1+;
+timeline captions work on every Resolve 21 Studio build.
 
 ## Requirements
 
@@ -34,6 +38,7 @@ extract a speaker-timestamp transcript or query Resolve's IntelliSearch index.
   scripting-library compatibility must be checked on your machine.
 - An MCP client supporting stdio or Streamable HTTP.
 - Optional Moondream API key, only for cloud vision tools.
+- Optional **ffmpeg** on `PATH` (or `RESOLVE_MCP_FFMPEG`), only for silence detection and tightening.
 - Required native AI packages installed through Resolve's Extras Download Manager.
 
 Blackmagic's API documentation describes a Free/Studio superset, but some functions
@@ -243,6 +248,35 @@ default to dry-run. Chapter markers take supplied timestamps; they do not infer
 speaker changes. Direct trim/move operations are deferred because the API does not
 provide a general, reliable in-place edit with full effect preservation.
 
+## Transcripts, captions and tightening
+
+These tools never modify the timeline you are working on.
+
+| Tool | What it does |
+|---|---|
+| `resolve_create_captions` | Runs Resolve's auto-captioning on the current timeline (adds a subtitle track). Success is judged by reading the new cues back, because Resolve's own true/false is unreliable. |
+| `resolve_get_transcript` | Returns caption cues (timeline seconds and frames) or, on 21.1+, a clip's full native transcript with speakers and word times. Writes SRT, VTT or plain text to a new file. |
+| `resolve_detect_silence` | Read-only ffmpeg `silencedetect` on the dialogue track's source media. The threshold is calibrated from the recording's own noise floor unless you set one. |
+| `resolve_tighten_silence` | Removes silences into a **new timeline**, leaving a short pause on each side so words are not clipped. Dry-run by default. |
+| `resolve_build_cut_variant` | Removes any list of time ranges (for example caption cues with filler words) into a **new timeline**. Dry-run by default. |
+| `resolve_wait_for_render` | Waits for a render job or the whole queue, then reports status and the output file. |
+
+How variants work: one "spine" track (A1 by default) decides what is kept. Each kept
+piece of its media is appended source-accurately, with its video and audio if the original
+used both, and every piece is read back and checked. Clips from other media (B-roll, music,
+titles, a second camera) are listed under `not_carried_over` instead of being guessed at.
+Retimed clips and media at a different frame rate are refused. If a check fails the
+incomplete variant is kept for inspection and the source timeline is reselected.
+
+Free-edition calls to Resolve's AI features open a modal upgrade dialog that makes later
+API calls fail, so these tools refuse to run unless the product is Resolve Studio.
+
+## Workflow prompts
+
+MCP clients that support prompts get ready-made recipes with the safety rules built in:
+`podcast_episode_edit`, `tighten_recording`, `captions_and_transcript`,
+`safe_shot_replacement` and `youtube_delivery`.
+
 ## Development
 
 ```bash
@@ -253,10 +287,13 @@ python -m build
 ```
 
 See [architecture](ARCHITECTURE.md), [manual integration tests](docs/INTEGRATION_TESTS.md),
-[validation](docs/VALIDATION.md), and the [2.0 implementation report](docs/RELEASE_2.0.md).
+[validation](docs/VALIDATION.md), the [2.0 implementation report](docs/RELEASE_2.0.md),
+and the [2.1 release notes](docs/RELEASE_2.1.md).
 
 ## License
 
 [MIT](LICENSE). Resolve-native additions were implemented independently from
 Blackmagic's installed scripting documentation. No source was copied from the
-Digital Workflow Company reference implementation.
+Digital Workflow Company reference implementation. The 2.1 transcript and tightening
+workflows were written independently; the idea of caption readback and calibrated silence
+detection was informed by reviewing samuelgursky/davinci-resolve-mcp (MIT).

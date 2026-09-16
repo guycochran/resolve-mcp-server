@@ -7,6 +7,7 @@ from resolve_mcp.tools import analysis, workflows
 def ai(monkeypatch, registry):
     resolve, project, folder, pool, clip = [Mock() for _ in range(5)]
     resolve.GetVersion.return_value = [21, 0, 4]
+    resolve.GetProductName.return_value = "DaVinci Resolve Studio"
     folder.GetName.return_value = "Interviews"
     folder.GetClipList.return_value = [clip]
     clip.GetName.return_value = "Interview"

@@ -61,8 +61,12 @@ def create_server(config: Config | None = None) -> ResolveMCP:
         module.register(instance)
     resources.register(instance)
     # Imported here to keep workflow helpers independent of server construction.
-    from .tools import workflows
+    from .tools import workflows, transcript, cuts, jobs, prompts
     workflows.register(instance)
+    transcript.register(instance)
+    cuts.register(instance)
+    jobs.register(instance)
+    prompts.register(instance)
     return instance
 
 
