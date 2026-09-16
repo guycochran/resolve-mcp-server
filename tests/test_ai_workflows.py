@@ -133,3 +133,18 @@ def test_timeline_clip_lookup_uses_exclusive_end(scene, monkeypatch, registry):
     workflows.register(registry)
     assert len(registry.tools["resolve_find_timeline_clip"](seconds=0, track_index=1)["matches"]) == 1
     assert len(registry.tools["resolve_find_timeline_clip"](seconds=5, track_index=1)["matches"]) == 0
+
+
+def test_broll_bad_insert_is_removed(scene, monkeypatch, registry):
+    for name, value in (("get_project", scene.project), ("get_timeline", scene.timeline),
+                        ("get_media_pool", scene.pool)):
+        monkeypatch.setattr(workflows, name, lambda v=value: v)
+    monkeypatch.setattr(workflows, "find_media", lambda *a: scene.media)
+    scene.timeline.GetItemListInTrack.return_value = []
+    scene.new.GetStart.return_value = 86400
+    scene.new.GetEnd.return_value = 86429  # one frame short of the requested 30
+    workflows.register(registry)
+    result = registry.tools["resolve_insert_broll"]("New", 86400, 30, dry_run=False)
+    assert result["success"] is False
+    assert result["original_repair"]["bad_insert_removed"] is True
+    scene.timeline.DeleteClips.assert_any_call([scene.new], False)

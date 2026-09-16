@@ -1,3 +1,4 @@
+import json
 import pytest
 from unittest.mock import Mock
 from resolve_mcp.services import replacement as rep
@@ -196,3 +197,55 @@ def test_timecode_roundtrip(fps, tc):
 def test_skipped_drop_frame_label_rejected():
     with pytest.raises(ValueError):
         to_frame("00:01:00;00", 29.97)
+
+
+def test_delete_refusal_relinks_peers(scene):
+    audio = Mock()
+    audio.GetName.return_value = "Interview"
+    scene.old.GetLinkedItems.return_value = [audio]
+    scene.timeline.DeleteClips.return_value = False
+    result = rep.replace_clip(2, 1, "New")
+    assert result["success"] is False
+    assert result["recovery"]["original_repair"]["links_restored"] is True
+    scene.timeline.SetClipsLinked.assert_any_call([scene.old, audio], True)
+
+
+def test_wrong_insert_extent_removes_bad_insert(scene):
+    scene.new.GetEnd.return_value = 86521
+    result = rep.replace_clip(2, 1, "New")
+    assert result["success"] is False
+    assert result["recovery"]["original_repair"]["bad_insert_removed"] is True
+    scene.timeline.DeleteClips.assert_any_call([scene.new], False)
+
+
+def test_insert_vanished_with_links_reports_unrestorable(scene):
+    audio = Mock()
+    scene.old.GetLinkedItems.return_value = [audio]
+    scene.pool.AppendToTimeline.return_value = []
+    result = rep.replace_clip(2, 1, "New")
+    assert result["success"] is False
+    assert result["recovery"]["original_repair"]["links_restored"] is False
+
+
+def test_link_restore_failure_keeps_verified_insert(scene):
+    audio = Mock()
+    scene.old.GetLinkedItems.return_value = [audio]
+    scene.timeline.SetClipsLinked.side_effect = [True, False]
+    result = rep.replace_clip(2, 1, "New")
+    assert result["success"] is False
+    assert [scene.new] not in [c.args[0] for c in scene.timeline.DeleteClips.call_args_list]
+
+
+def test_delete_clip_failure_relinks_peers(scene, registry, monkeypatch):
+    from resolve_mcp.tools import editing
+    audio = Mock()
+    scene.old.GetLinkedItems.return_value = [audio]
+    scene.timeline.DeleteClips.return_value = False
+    monkeypatch.setattr(editing, "get_timeline", lambda: scene.timeline)
+    monkeypatch.setattr(editing, "get_project", lambda: scene.project)
+    monkeypatch.setattr(editing, "timeline_clip", lambda *a, **k: scene.old)
+    editing.register(registry)
+    result = json.loads(registry.tools["resolve_delete_clip"]("video", 2, 1))
+    assert result["success"] is False
+    assert result["original_repair"]["links_restored"] is True
+    scene.timeline.SetClipsLinked.assert_any_call([scene.old, audio], True)

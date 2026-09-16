@@ -74,9 +74,14 @@ def replace_clip(track_index: int, clip_index: int, new_clip_name: str,
     plan["recovery_timeline"] = backup.GetName()
     plan["original_timeline"] = timeline.GetName()
     deleted = False
+    unlinked = False
+    inserted = []
+    insert_verified = False
     try:
-        if linked and not timeline.SetClipsLinked([old, *linked], False):
-            raise RuntimeError("Could not unlink the target from linked clips; deletion was not attempted.")
+        if linked:
+            if not timeline.SetClipsLinked([old, *linked], False):
+                raise RuntimeError("Could not unlink the target from linked clips; deletion was not attempted.")
+            unlinked = True
         if not timeline.DeleteClips([old], False):
             raise RuntimeError("Resolve refused the non-ripple deletion.")
         deleted = True
@@ -88,12 +93,29 @@ def replace_clip(track_index: int, clip_index: int, new_clip_name: str,
         new = inserted[0]
         if new.GetStart() != before["start"] or new.GetEnd() != before["end"]:
             raise RuntimeError("Inserted clip position or duration differs from the requested edit.")
+        insert_verified = True
         if linked and not timeline.SetClipsLinked([new, *linked], True):
             raise RuntimeError("Replacement inserted, but the original link relationships could not be restored.")
         plan["inserted"] = item_info(new)
         plan["note"] = "Recovery copy retains original grades, Fusion, retiming, and links. Replacement uses new media defaults."
         return plan
     except Exception as exc:
+        # Best-effort repair of the ORIGINAL timeline before switching away:
+        # remove a mis-sized insert and restore the links the unlink step broke.
+        # A verified insert is never removed — only its link restoration failed.
+        repair = {}
+        if inserted and not insert_verified:
+            try:
+                repair["bad_insert_removed"] = bool(timeline.DeleteClips(list(inserted), False))
+            except Exception:
+                repair["bad_insert_removed"] = False
+        if unlinked and not deleted:
+            try:
+                repair["links_restored"] = bool(timeline.SetClipsLinked([old, *linked], True))
+            except Exception:
+                repair["links_restored"] = False
+        elif unlinked and not insert_verified:
+            repair["links_restored"] = False  # original was deleted; nothing to relink to
         try:
             active_backup = bool(project.SetCurrentTimeline(backup))
         except Exception:
@@ -101,5 +123,6 @@ def replace_clip(track_index: int, clip_index: int, new_clip_name: str,
         return dict(plan, success=False, deleted_original=deleted,
                     error={"code": "replacement_failed", "message": str(exc)},
                     recovery={"backup_selected": active_backup, "timeline": backup.GetName(),
+                              "original_repair": repair,
                               "original_timeline_may_be_modified": True,
                               "instruction": "Use the complete recovery timeline. The original timeline is retained for inspection; references are not automatically redirected."})

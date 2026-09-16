@@ -105,6 +105,7 @@ def register(mcp):
         if dry_run:
             return plan
         backup = backup_timeline(project, timeline)
+        inserted = []
         try:
             inserted = pool.AppendToTimeline([{"mediaPoolItem": media, "startFrame": source_in,
                                               "endFrame": source_out_exclusive,
@@ -114,8 +115,19 @@ def register(mcp):
                 raise RuntimeError("Resolve did not create the requested B-roll interval.")
             return dict(plan, inserted=item_info(inserted[0]), recovery_timeline=backup.GetName())
         except Exception as exc:
+            # Don't leave a mis-sized B-roll clip on the original timeline.
+            repair = {}
+            if inserted:
+                try:
+                    repair["bad_insert_removed"] = bool(timeline.DeleteClips(list(inserted), False))
+                except Exception:
+                    repair["bad_insert_removed"] = False
+            try:
+                selected = bool(project.SetCurrentTimeline(backup))
+            except Exception:
+                selected = False
             return dict(plan, success=False, error=str(exc), recovery_timeline=backup.GetName(),
-                        backup_selected=bool(project.SetCurrentTimeline(backup)))
+                        backup_selected=selected, original_repair=repair)
 
     @mcp.tool()
     @structured

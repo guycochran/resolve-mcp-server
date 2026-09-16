@@ -99,17 +99,31 @@ def register(mcp):
         before = item_info(item)
         backup = backup_timeline(project, timeline)
         linked = item.GetLinkedItems() or []
+        unlinked = False
         try:
-            if linked and not timeline.SetClipsLinked([item, *linked], False):
-                raise RuntimeError("Could not unlink target; delete was not attempted.")
+            if linked:
+                if not timeline.SetClipsLinked([item, *linked], False):
+                    raise RuntimeError("Could not unlink target; delete was not attempted.")
+                unlinked = True
             if not timeline.DeleteClips([item], ripple):
                 raise RuntimeError("Resolve refused deletion.")
             return json.dumps({"success": True, "deleted": before, "ripple": ripple,
                                "recovery_timeline": backup.GetName()})
         except Exception as exc:
-            selected = project.SetCurrentTimeline(backup)
+            # The clip survives every failure path here, so restore the links
+            # the unlink step broke instead of leaving the pair silently split.
+            repair = {}
+            if unlinked:
+                try:
+                    repair["links_restored"] = bool(timeline.SetClipsLinked([item, *linked], True))
+                except Exception:
+                    repair["links_restored"] = False
+            try:
+                selected = bool(project.SetCurrentTimeline(backup))
+            except Exception:
+                selected = False
             return json.dumps({"success": False, "error": str(exc), "recovery_timeline": backup.GetName(),
-                               "backup_selected": bool(selected)})
+                               "backup_selected": selected, "original_repair": repair})
 
     @mcp.tool()
     def resolve_replace_clip(track_index: int, clip_index: int, new_clip_name: str,
