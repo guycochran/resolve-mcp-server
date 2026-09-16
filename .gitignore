@@ -9,6 +9,9 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+.pytest_cache/
+.ruff_cache/
+pytest-cache-files-*/
 
 # Exported frames (temp files)
 /tmp/

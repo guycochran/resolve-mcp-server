@@ -124,12 +124,12 @@ def register(mcp: FastMCP):
         resolve = get_resolve()
         item = _get_current_clip()
 
-        type_map = {
-            "17pt": 0,  # EXPORT_LUT_17PTCUBE
-            "33pt": 1,  # EXPORT_LUT_33PTCUBE
-            "65pt": 2,  # EXPORT_LUT_65PTCUBE
-        }
-        lut_type = type_map.get(export_type, 1)
+        type_map = {"17pt": "EXPORT_LUT_17PTCUBE", "33pt": "EXPORT_LUT_33PTCUBE", "65pt": "EXPORT_LUT_65PTCUBE"}
+        if export_type not in type_map:
+            raise ValueError("export_type must be 17pt, 33pt, or 65pt.")
+        lut_type = getattr(resolve, type_map[export_type], None)
+        if lut_type is None:
+            return "This LUT export type is unavailable in the installed Resolve version."
 
         if item.ExportLUT(lut_type, output_path):
             return f"Exported {export_type} LUT to {output_path}"

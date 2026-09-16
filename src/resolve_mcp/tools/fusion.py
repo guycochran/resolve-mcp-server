@@ -76,8 +76,8 @@ def register(mcp: FastMCP):
                     "id": tool.GetAttrs("TOOLS_RegID"),
                     "name": tool.GetAttrs("TOOLS_Name"),
                 })
-            except Exception:
-                tool_list.append({"index": idx, "id": "unknown", "name": "unknown"})
+            except Exception as exc:
+                tool_list.append({"index": idx, "error": str(exc)})
 
         return json.dumps({
             "clip": item.GetName(),
