@@ -249,3 +249,5 @@ def test_delete_clip_failure_relinks_peers(scene, registry, monkeypatch):
     assert result["success"] is False
     assert result["original_repair"]["links_restored"] is True
     scene.timeline.SetClipsLinked.assert_any_call([scene.old, audio], True)
+    assert result["error"]["code"] == "delete_failed"
+    assert result["recovery"]["original_timeline_may_be_modified"] is False

@@ -101,7 +101,8 @@ all original tool names and actual stdio protocol initialization.
   MCP tool error. Tool names and parameters are unchanged; clients should read `success`.
   Plain-text legacy tools (for example `resolve_reconnect`) are unchanged.
 - Replacement and B-roll plans, including dry-runs, include a `recovery_policy` field.
-- B-roll failures use the same `{code, message}` error and `recovery` block as replacement.
+- B-roll and `resolve_delete_clip` failures use the same `{code, message}` error and
+  `recovery` block as replacement.
 - `original_timeline_may_be_modified` is false when nothing on the original was changed.
 - `resolve_quick_export` always sends `EnableUpload: false` and reports a `success` field.
 - A false native transcription result is marked `retryable` with a wait-and-retry hint.

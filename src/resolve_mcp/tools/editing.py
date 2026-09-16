@@ -129,8 +129,13 @@ def register(mcp):
                 selected = bool(project.SetCurrentTimeline(backup))
             except Exception:
                 selected = False
-            return json.dumps({"success": False, "error": str(exc), "recovery_timeline": backup.GetName(),
-                               "backup_selected": selected, "original_repair": repair})
+            modified = bool(unlinked and not repair.get("links_restored"))
+            return json.dumps({"success": False, "error": {"code": "delete_failed", "message": str(exc)},
+                               "recovery_timeline": backup.GetName(), "backup_selected": selected,
+                               "original_repair": repair,
+                               "recovery": {"backup_selected": selected, "timeline": backup.GetName(),
+                                            "original_timeline": timeline.GetName(), "original_repair": repair,
+                                            "original_timeline_may_be_modified": modified}})
 
     @mcp.tool()
     @structured_json
