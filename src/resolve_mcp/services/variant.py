@@ -257,6 +257,9 @@ def build(project, pool, timeline, planned, name, markers=True, open_variant=Tru
         raise ValueError("Nothing would remain; no timeline was created.")
     if name in _existing_names(project):
         raise ValueError(f"A timeline named {name!r} already exists.")
+    source_locks = {(kind, index): bool(timeline.GetIsTrackLocked(kind, index))
+                    for kind in (*KINDS, "subtitle")
+                    for index in range(1, int(timeline.GetTrackCount(kind) or 0) + 1)}
     variant = timeline.DuplicateTimeline(name)
     if not variant:
         raise RuntimeError("Resolve could not duplicate the source timeline; nothing was changed.")
@@ -334,6 +337,20 @@ def build(project, pool, timeline, planned, name, markers=True, open_variant=Tru
         result.update(success=False, error={"code": "variant_failed", "message": str(exc)},
                       note="The source timeline was not modified. The incomplete variant is kept for inspection.")
     finally:
+        # Live finding (Resolve Studio 21.0.4.5): unlocking a track on the duplicate also cleared
+        # the lock on the source timeline. Put the source's lock states back and say so.
+        restored, unrestored = [], []
+        for (kind, index), locked in source_locks.items():
+            if bool(timeline.GetIsTrackLocked(kind, index)) != locked:
+                timeline.SetTrackLock(kind, index, locked)
+                ok = bool(timeline.GetIsTrackLocked(kind, index)) == locked
+                (restored if ok else unrestored).append(f"{kind} {index}")
+        if restored:
+            result["notes"].append(f"Resolve changed the source timeline's lock on {', '.join(restored)}; "
+                                   "it was restored")
+        if unrestored:
+            result["source_lock_changed"] = unrestored
+            result["notes"].append(f"Source timeline lock state could not be restored on {', '.join(unrestored)}")
         if not open_variant or not result.get("success"):
             result["source_reselected"] = bool(project.SetCurrentTimeline(timeline))
     return result

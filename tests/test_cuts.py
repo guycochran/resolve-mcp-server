@@ -409,3 +409,30 @@ def test_unreadable_mic_blocks_shared_silence(show, monkeypatch):
     assert show.tools["resolve_detect_silence"](detect_on="spine")["success"]
     show.source.disabled.add(("audio", 2))
     assert show.tools["resolve_detect_silence"]()["success"]
+
+
+def test_source_lock_restored_when_resolve_shares_it(show):
+    """Resolve 21.0.4.5 cleared the SOURCE lock when the duplicate's track was unlocked."""
+    add_mics(show)
+    show.source.locked.add(("audio", 3))
+    original_dup = Timeline.DuplicateTimeline
+
+    def shared_lock_dup(self, name):
+        dup = original_dup(self, name)
+        source = self
+
+        def set_lock(kind, index, value):
+            Timeline.SetTrackLock(dup, kind, index, value)
+            if not value:  # observed: the unlock leaked to the source; the relock did not
+                source.locked.discard((kind, index))
+            return True
+        dup.SetTrackLock = set_lock
+        return dup
+    Timeline.DuplicateTimeline = shared_lock_dup
+    try:
+        result = show.tools["resolve_build_cut_variant"]([{"start_seconds": 1, "end_seconds": 2}], dry_run=False)
+    finally:
+        Timeline.DuplicateTimeline = original_dup
+    assert result["success"], result
+    assert ("audio", 3) in show.source.locked
+    assert any("lock on audio 3" in n and "restored" in n for n in result["notes"])
