@@ -262,12 +262,20 @@ These tools never modify the timeline you are working on.
 | `resolve_build_cut_variant` | Removes any list of time ranges (for example caption cues with filler words) into a **new timeline**. Dry-run by default. |
 | `resolve_wait_for_render` | Waits for a render job or the whole queue, then reports status and the output file. |
 
-How variants work: one "spine" track (A1 by default) decides what is kept. Each kept
-piece of its media is appended source-accurately, with its video and audio if the original
-used both, and every piece is read back and checked. Clips from other media (B-roll, music,
-titles, a second camera) are listed under `not_carried_over` instead of being guessed at.
-Retimed clips and media at a different frame rate are refused. If a check fails the
-incomplete variant is kept for inspection and the source timeline is reselected.
+How variants work: the source timeline is duplicated, the copy is emptied, and the kept
+piece of every clip is appended back onto the same track, closed up with no gaps. The copy
+keeps track names, mono/stereo formats, enable and lock states and timeline settings. Cuts
+apply to all tracks at once, so cameras and separate mic tracks stay in sync, linked clips are
+relinked, and timeline markers in kept time move with the edit. Each track is read back and
+checked against the plan.
+
+Silence is only cut where **every** enabled audio track is quiet, so a guest answering while
+the host is silent is never mistaken for dead air (`detect_on="spine"` analyzes one track only).
+Titles, generators, compound/multicam clips, retimed clips and media at a different frame rate
+can't be re-cut exactly; they are left out and listed under `not_carried_over`. On the spine
+track (A1 by default) they are an error instead. `tracks="spine"` keeps the 2.1 behaviour of
+carrying only the spine track. If a check fails, the incomplete variant is kept for inspection
+and the source timeline is reselected.
 
 Free-edition calls to Resolve's AI features open a modal upgrade dialog that makes later
 API calls fail, so these tools refuse to run unless the product is Resolve Studio.
@@ -289,7 +297,7 @@ python -m build
 
 See [architecture](ARCHITECTURE.md), [manual integration tests](docs/INTEGRATION_TESTS.md),
 [validation](docs/VALIDATION.md), the [2.0 implementation report](docs/RELEASE_2.0.md),
-and the [2.1 release notes](docs/RELEASE_2.1.md).
+the [2.1 release notes](docs/RELEASE_2.1.md) and [2.2 release notes](docs/RELEASE_2.2.md).
 
 ## License
 

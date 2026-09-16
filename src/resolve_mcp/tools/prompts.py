@@ -19,9 +19,11 @@ def register(mcp):
 
 Steps:
 1. resolve_set_current_timeline if a name was given; read resolve://timeline/tracks and items. Identify the
-   dialogue spine track (usually A1) and any clips that won't be carried into a variant.
+   dialogue tracks. Separate mic tracks are fine: silence is only cut where every mic is quiet and
+   all tracks are cut together. Note any titles or compound clips; they won't be carried into a variant.
 2. resolve_create_captions (language auto unless known), then resolve_get_transcript(source="captions").
-3. resolve_tighten_silence with dry_run=true. Report the removed seconds and not_carried_over list.
+3. resolve_tighten_silence with dry_run=true. Report the removed seconds, analyzed_tracks and the
+   not_carried_over list.
    After approval run it with dry_run=false; it creates a NEW timeline and leaves the original alone.
 4. On the tightened timeline, create captions again, read the transcript, and propose text cuts
    (filler, false starts, off-topic). Show each cue's text and times. After approval call
