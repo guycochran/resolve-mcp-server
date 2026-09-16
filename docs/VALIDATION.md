@@ -211,3 +211,32 @@ Other observations:
 - `resolve_wait_for_render` saw job status `Ready` while rendering was already in progress.
 
 Not live-tested on macOS: free-edition refusal, speaker detection output.
+
+## 2.2 live acceptance (Windows)
+
+Windows, DaVinci Resolve Studio 21.0.4.5, Python 3.12.14, ffmpeg from Shutter Encoder.
+Commit 0459b2e, real stdio client, disposable project `MCP ACCEPTANCE 2026-09-15`,
+source timeline `MCP 2.2 TwoMic 042945` (24 fps, 40 s): V1/A1 camera with mixed scratch audio
+(linked), A2 "Host" mono mic, A3 "Guest" mono mic. Host speaks 0–10 and 25–35 s, guest 14–24 s.
+Unit tests: 164. **34 of 34 live checks pass.**
+
+| Check | Result |
+|---|---|
+| Locked A3 | Tighten refused before creating anything ("Unlock these tracks first: audio 3"); source unchanged and still locked |
+| Shared silence (A1+A2+A3, calibrated per clip) | 10.000–14.083, 24.000–25.083, 35.000–40.000 s |
+| Host-only detection | 10.000–25.083 s: would treat the guest's answer as dead air |
+| Dry-runs | All mics remove 8.92 s; host only would remove 19.33 s; nothing created or changed |
+| Tighten (all tracks) | 3 pieces on V1, A1, A2, A3 at 0–246, 246–496, 496–746 (746 of 960 frames), identical and gapless on every track |
+| Track setup | Names and mono formats kept; no lock state changed anywhere |
+| Links | Each V1 piece linked to its A1 piece only; mic pieces unlinked, as in the source |
+| Source mapping | Guest mic pieces start at source frames 0, 332, 596 as planned |
+| Markers | Intro stays at 120 (custom data kept); Guest answer 480 → 394 (duration 48); marker in the gap dropped |
+| Source timeline | Items, names, formats, locks and markers unchanged |
+| Text cut 16–18 s | 48 frames removed from all four tracks: 0–384, 384–912 |
+| Render + wait | Complete; 31.104 s vs 31.08 s kept |
+
+Findings that changed the code during this acceptance:
+- Imported WAV clips report an empty `Frames` property; frame count now falls back to the
+  `Duration` timecode. Before the fix, mic tracks were skipped and detection analyzed only A1.
+- Unlocking a track on a duplicated timeline also unlocked it on the source, and re-locking the
+  source did not survive reselecting the duplicate. The build tools now refuse locked tracks.
