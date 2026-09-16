@@ -428,6 +428,13 @@ def test_source_lock_restored_when_resolve_shares_it(show):
             return True
         dup.SetTrackLock = set_lock
         return dup
+
+    def source_set_lock(kind, index, value):
+        # observed: SetTrackLock only works on the current timeline
+        if show.project.current is show.source:
+            Timeline.SetTrackLock(show.source, kind, index, value)
+        return True
+    show.source.SetTrackLock = source_set_lock
     Timeline.DuplicateTimeline = shared_lock_dup
     try:
         result = show.tools["resolve_build_cut_variant"]([{"start_seconds": 1, "end_seconds": 2}], dry_run=False)
@@ -436,3 +443,4 @@ def test_source_lock_restored_when_resolve_shares_it(show):
     assert result["success"], result
     assert ("audio", 3) in show.source.locked
     assert any("lock on audio 3" in n and "restored" in n for n in result["notes"])
+    assert show.project.current.GetName() != "Episode 12", "variant reselected after the restore"

@@ -339,12 +339,19 @@ def build(project, pool, timeline, planned, name, markers=True, open_variant=Tru
     finally:
         # Live finding (Resolve Studio 21.0.4.5): unlocking a track on the duplicate also cleared
         # the lock on the source timeline. Put the source's lock states back and say so.
+        # A second finding: SetTrackLock on the source did not take effect while the variant was the
+        # current timeline, so the source is selected for the restore.
         restored, unrestored = [], []
-        for (kind, index), locked in source_locks.items():
-            if bool(timeline.GetIsTrackLocked(kind, index)) != locked:
+        changed = [(k, locked) for k, locked in source_locks.items()
+                   if bool(timeline.GetIsTrackLocked(*k)) != locked]
+        if changed:
+            project.SetCurrentTimeline(timeline)
+            for (kind, index), locked in changed:
                 timeline.SetTrackLock(kind, index, locked)
                 ok = bool(timeline.GetIsTrackLocked(kind, index)) == locked
                 (restored if ok else unrestored).append(f"{kind} {index}")
+            if open_variant and result.get("success"):
+                project.SetCurrentTimeline(variant)
         if restored:
             result["notes"].append(f"Resolve changed the source timeline's lock on {', '.join(restored)}; "
                                    "it was restored")
